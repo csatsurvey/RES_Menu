@@ -1,0 +1,6 @@
+{
+  "name": "Chef Menu & Direct Order",
+  "description": "An interactive digital restaurant menu, chef admin controller, and real-time AI smart suggestions for customers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
