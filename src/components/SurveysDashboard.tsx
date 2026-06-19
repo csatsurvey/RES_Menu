@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Clock, Trash2, ShieldAlert, Calendar, HelpCircle } from 'lucide-react';
+import { Star, Clock, Trash2, ShieldAlert, Calendar, HelpCircle, Download, Printer } from 'lucide-react';
 
 interface CustomerFeedback {
   id: string;
@@ -8,9 +8,10 @@ interface CustomerFeedback {
   serviceRating: number;
   comment: string;
   phone?: string;
-  status: 'pending' | 'inprogress' | 'solved' | 'uncontactable';
+  status: string;
   timestamp: string;
   createdAt?: string;
+  ratings?: Record<string, number>;
 }
 
 interface SurveysDashboardProps {
@@ -41,7 +42,7 @@ export default function SurveysDashboard({
 }: SurveysDashboardProps) {
   
   // Status filtering state specifically for dashboard
-  const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'pending' | 'inprogress' | 'solved' | 'uncontactable'>('all');
+  const [feedbackFilter, setFeedbackFilter] = useState<string>('all');
 
   // Quantitative state helpers: count by status (on all date-filtered surveys)
   const getFilteredFeedbacksByDate = () => {
@@ -112,6 +113,116 @@ export default function SurveysDashboard({
     ? (population.reduce((acc, f) => acc + f.serviceRating, 0) / population.length).toFixed(1)
     : '5.0';
 
+  const downloadCSV = (headers: string[], data: any[][], fileName: string) => {
+    const csvRows = [headers.join(",")];
+    for (const row of data) {
+      const escaped = row.map(val => {
+        const s = String(val ?? '').replace(/"/g, '""');
+        return `"${s}"`;
+      });
+      csvRows.push(escaped.join(","));
+    }
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportSurveysToCSV = () => {
+    const headers = [
+      lang === 'mn' ? 'ID' : "ID",
+      lang === 'mn' ? 'Ширээ' : "Table",
+      lang === 'mn' ? 'Хоолны амт' : "Taste Rating",
+      lang === 'mn' ? 'Үйлчилгээ' : "Service Rating",
+      lang === 'mn' ? 'Санал хүсэлт' : "Comment",
+      lang === 'mn' ? 'Утас' : "Phone",
+      lang === 'mn' ? 'Шийдвэрлэлт' : "Status",
+      lang === 'mn' ? 'Огноо' : "Date"
+    ];
+    const data = finalFiltered.map(f => [
+      f.id,
+      f.tableNumber,
+      f.tasteRating,
+      f.serviceRating,
+      f.comment,
+      f.phone || '',
+      f.status,
+      f.timestamp
+    ]);
+    downloadCSV(headers, data, `surveys_${new Date().toISOString().substring(0,10)}.csv`);
+    showNotification(lang === 'mn' ? 'Судалгааны тайлан (Excel / CSV) татагдлаа!' : 'Surveys (Excel / CSV) downloaded!');
+  };
+
+  const exportSurveysToPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showNotification(lang === 'mn' ? 'Хөтөчийн pop-up хаалттай байна!' : 'Popup blocker active!');
+      return;
+    }
+    const title = lang === 'mn' ? 'Сэтгэл ханамжийн судалгааны тайлан' : 'Satisfaction Surveys Report';
+    const html = `
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px; color: #1e293b; background: #fff; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 20px; }
+          h1 { font-size: 20px; color: #0f172a; margin: 0; font-weight: 800; }
+          .meta { font-size: 11px; color: #64748b; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          th, td { border: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; font-size: 11.5px; }
+          th { background-color: #f8fafc; color: #475569; font-weight: 700; }
+          tr:nth-child(even) { background-color: #f8fafc; }
+          .stars { color: #f59e0b; font-weight: bold; }
+        </style>
+      </head>
+      <body onload="window.print()">
+        <div class="header">
+          <div>
+            <h1>${title}</h1>
+            <p style="margin: 5px 0 0; font-size: 12px; color: #64748b;">${lang === 'mn' ? 'Шүүлтүүрийн төлөв:' : 'Filter state:'} ${feedbackFilter.toUpperCase()}</p>
+          </div>
+          <div class="meta">
+            <div>${lang === 'mn' ? 'Хэвлэсэн:' : 'Printed:'} ${new Date().toLocaleDateString()}</div>
+            <div>${lang === 'mn' ? 'Нийт судалгаа:' : 'Count:'} ${finalFiltered.length}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>${lang === 'mn' ? 'Ширээ' : 'Table'}</th>
+              <th>${lang === 'mn' ? 'Хоолны амт' : 'Taste'}</th>
+              <th>${lang === 'mn' ? 'Үйлчилгээ' : 'Service'}</th>
+              <th>${lang === 'mn' ? 'Тайлбар' : 'Comment'}</th>
+              <th>${lang === 'mn' ? 'Утас' : 'Phone'}</th>
+              <th>${lang === 'mn' ? 'Шийдвэрлэлт' : 'Status'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${finalFiltered.map(f => `
+              <tr>
+                <td style="font-weight: bold;">${f.tableNumber}</td>
+                <td class="stars">${'★'.repeat(f.tasteRating)}</td>
+                <td class="stars">${'★'.repeat(f.serviceRating)}</td>
+                <td>${f.comment}</td>
+                <td>${f.phone || '-'}</td>
+                <td style="font-weight: 600; text-transform: uppercase; font-size: 10px;">${f.status}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const clearAllFeedbacks = () => {
     if (window.confirm(lang === 'mn' ? 'Бүх судалгааг бүрмөсөн устгахдаа итгэлтэй байна уу?' : 'Are you sure you want to delete all customer surveys?')) {
       setFeedbacks([]);
@@ -136,14 +247,35 @@ export default function SurveysDashboard({
         </div>
 
         {feedbacks.length > 0 && (
-          <button
-            type="button"
-            onClick={clearAllFeedbacks}
-            className="text-[10.5px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer hover:underline self-start sm:self-center"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>{lang === 'mn' ? 'Түүх цэвэрлэх' : 'Purger Logs'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+            <div className="flex items-center gap-1.5 border-none border-slate-200 sm:border-r sm:pr-3 sm:mr-1">
+              <button
+                type="button"
+                onClick={exportSurveysToCSV}
+                className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-705 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer border border-transparent hover:border-emerald-200"
+              >
+                <Download className="w-3 h-3 text-slate-500" />
+                <span>EXCEL (CSV)</span>
+              </button>
+              <button
+                type="button"
+                onClick={exportSurveysToPDF}
+                className="px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-705 border border-orange-150 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Printer className="w-3 h-3 text-orange-600" />
+                <span>PDF / PRINT</span>
+              </button>
+            </div>
+            
+            <button
+              type="button"
+              onClick={clearAllFeedbacks}
+              className="text-[10.5px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer hover:underline"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{lang === 'mn' ? 'Түүх цэвэрлэх' : 'Purger Logs'}</span>
+            </button>
+          </div>
         )}
       </div>
 

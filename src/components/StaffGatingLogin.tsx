@@ -8,6 +8,8 @@ interface Employee {
   pin: string;
   role: 'admin' | 'chef' | 'waiter';
   createdAt: string;
+  phone?: string;
+  isActive?: boolean;
 }
 
 interface StaffGatingLoginProps {
@@ -105,6 +107,7 @@ export default function StaffGatingLogin({
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" id="gating_employee_grid">
             {employees.map((emp) => {
+              const isDeactivated = emp.isActive === false;
               const roleBadgeColor = emp.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
                                     emp.role === 'chef' ? 'bg-rose-50 text-rose-700 border-rose-100' :
                                     'bg-amber-50 text-amber-700 border-amber-100';
@@ -115,18 +118,32 @@ export default function StaffGatingLogin({
                 <button
                   key={emp.id}
                   type="button"
+                  disabled={isDeactivated}
                   onClick={() => {
                     setSelectedEmp(emp);
                     setPinInput('');
                     setPinError(false);
                   }}
-                  className="p-4 bg-slate-50 hover:bg-orange-50/20 border border-slate-200 hover:border-orange-500 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer group"
+                  className={`p-4 border rounded-2xl text-left transition-all flex items-center gap-3 group ${
+                    isDeactivated 
+                      ? 'bg-slate-100 border-slate-205 py-3 opacity-55 cursor-not-allowed select-none' 
+                      : 'bg-slate-50 hover:bg-orange-50/20 border-slate-200 hover:border-orange-500 cursor-pointer'
+                  }`}
                 >
-                  <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-705 font-extrabold flex items-center justify-center text-sm group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                  <div className={`w-10 h-10 rounded-full text-slate-705 font-extrabold flex items-center justify-center text-sm transition-colors ${
+                    isDeactivated ? 'bg-slate-205 text-slate-400' : 'bg-slate-200 group-hover:bg-orange-600 group-hover:text-white'
+                  }`}>
                     {emp.name.charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <span className="font-bold text-xs text-slate-800 block leading-tight truncate group-hover:text-slate-950">{emp.name}</span>
+                    <div className="flex items-center gap-1.5 justify-between">
+                      <span className="font-bold text-xs text-slate-800 block leading-tight truncate group-hover:text-slate-950">{emp.name}</span>
+                      {isDeactivated && (
+                        <span className="text-[8.5px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-md shrink-0">
+                          {lang === 'mn' ? 'Идэвхгүй' : 'Deactivated'}
+                        </span>
+                      )}
+                    </div>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block mt-1 ${roleBadgeColor}`}>
                       {roleLabel}
                     </span>

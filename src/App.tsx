@@ -253,13 +253,14 @@ interface MenuDish {
   descMn: string;
   descEn: string;
   price: number;
-  category: 'traditional' | 'western' | 'desserts' | 'beverages';
+  category: string;
   image: string;
   isSpicy: boolean;
   isVegetarian: boolean;
   isChefSpecial: boolean;
   allergens?: string;
   cookingTimeMinutes: number;
+  isHidden?: boolean; // manager hide/unhide toggle
 }
 
 interface CartItem {
@@ -275,6 +276,10 @@ interface RestaurantOrder {
   notes: string;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   timestamp: string;
+  placedAt?: string;
+  preparingAt?: string;
+  readyAt?: string;
+  deliveredAt?: string;
 }
 
 interface Employee {
@@ -284,24 +289,27 @@ interface Employee {
   pin: string;
   role: 'admin' | 'chef' | 'waiter';
   createdAt: string;
+  phone?: string;
+  isActive?: boolean;
 }
 
 const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'emp-1', name: 'Болд (Админ)', username: 'admin', pin: '1234', role: 'admin', createdAt: '2026-06-17T07:20:55.000Z' },
-  { id: 'emp-2', name: 'Ууганхүү (Тогооч)', username: 'chef', pin: '2222', role: 'chef', createdAt: '2026-06-17T07:20:55.000Z' },
-  { id: 'emp-3', name: 'Сүхбат (Зөөгч)', username: 'waiter', pin: '3333', role: 'waiter', createdAt: '2026-06-17T07:20:55.000Z' },
+  { id: 'emp-1', name: 'Болд (Админ)', username: 'admin', pin: '1234', role: 'admin', createdAt: '2026-06-17T07:20:55.000Z', phone: '99112233', isActive: true },
+  { id: 'emp-2', name: 'Ууганхүү (Тогооч)', username: 'chef', pin: '2222', role: 'chef', createdAt: '2026-06-17T07:20:55.000Z', phone: '88114422', isActive: true },
+  { id: 'emp-3', name: 'Сүхбат (Зөөгч)', username: 'waiter', pin: '3333', role: 'waiter', createdAt: '2026-06-17T07:20:55.000Z', phone: '95156633', isActive: true },
 ];
 
 interface CustomerFeedback {
   id: string;
   tableNumber: string;
-  tasteRating: number; // 1-5
-  serviceRating: number; // 1-5
+  tasteRating: number; // 1-5 fallback
+  serviceRating: number; // 1-5 fallback
   comment: string;
   phone?: string;
-  status: 'pending' | 'inprogress' | 'solved' | 'uncontactable';
+  status: string; // Dynamic status resolution states
   timestamp: string;
   createdAt?: string;
+  ratings?: Record<string, number>; // Dynamic question ratings
 }
 
 const INITIAL_DISHES: MenuDish[] = [
@@ -397,19 +405,159 @@ const INITIAL_DISHES: MenuDish[] = [
   }
 ];
 
+interface MenuCategory {
+  id: string;
+  nameMn: string;
+  nameEn: string;
+  isHidden: boolean;
+}
+
+interface SurveyQuestion {
+  id: string;
+  textMn: string;
+  textEn: string;
+  type: 'rating' | 'text';
+}
+
+interface CustomStatus {
+  id: string;
+  nameMn: string;
+  nameEn: string;
+  colorClass: string;
+}
+
+const DEFAULT_CATEGORIES: MenuCategory[] = [
+  { id: 'traditional', nameMn: 'Монгол хоол', nameEn: 'Mongolian Heritage', isHidden: false },
+  { id: 'western', nameMn: 'Европ хоол', nameEn: 'Western Cuisine', isHidden: false },
+  { id: 'desserts', nameMn: 'Амттан', nameEn: 'Desserts & Sweets', isHidden: false },
+  { id: 'beverages', nameMn: 'Ундаа & Уух зүйлс', nameEn: 'Gourmet Beverages', isHidden: false }
+];
+
+const DEFAULT_SURVEY_QUESTIONS: SurveyQuestion[] = [
+  { id: 'q-taste', textMn: 'Хоолны амт, чанар', textEn: 'Food Taste & Quality', type: 'rating' },
+  { id: 'q-service', textMn: 'Үйлчилгээ, хурд хэмжээ', textEn: 'Service & Staff Speed', type: 'rating' }
+];
+
+const DEFAULT_CUSTOM_STATUSES: CustomStatus[] = [
+  { id: 'pending', nameMn: 'Шийдээгүй / Шинэ', nameEn: 'Unresolved / New', colorClass: 'bg-rose-50 text-rose-800 border-rose-205 focus:ring-rose-200' },
+  { id: 'inprogress', nameMn: 'Шийдэгдэж байгаа', nameEn: 'In Progress', colorClass: 'bg-amber-50 text-amber-850 border-amber-205 focus:ring-amber-200' },
+  { id: 'solved', nameMn: 'Шийдсэн', nameEn: 'Resolved', colorClass: 'bg-emerald-50 text-emerald-800 border-emerald-205 focus:ring-emerald-200' },
+  { id: 'uncontactable', nameMn: 'Холбогдож чадаагүй', nameEn: 'Uncontactable', colorClass: 'bg-indigo-50 text-indigo-805 border-indigo-205 focus:ring-indigo-100' }
+];
+
 export default function App() {
   const [lang, setLang] = useState<'mn' | 'en'>('mn');
+  
+  // Multi-tenant Organization Key State
+  const [restaurantKey, setRestaurantKey] = useState<string>(() => {
+    return localStorage.getItem('gourmet_restaurant_key') || 'BENTO-GRAND';
+  });
+
   const [viewMode, setViewMode] = useState<'customer' | 'admin'>('customer');
   const [adminRole, setAdminRole] = useState<'manager' | 'waiter' | 'chef'>('manager');
   const [passcodeModalOpen, setPasscodeModalOpen] = useState(false);
   const [passcodeInput, setPasscodeInput] = useState('');
   const [passcodeError, setPasscodeError] = useState(false);
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [newWorkspaceKeyInput, setNewWorkspaceKeyInput] = useState('');
 
-  // Real Employee Database States with local storage integration
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    const saved = localStorage.getItem('gourmet_employees');
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-  });
+  // Dynamic Workspace States partitioned by the Active restaurantKey
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [dishes, setDishes] = useState<MenuDish[]>([]);
+  const [orders, setOrders] = useState<RestaurantOrder[]>([]);
+  const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([]);
+  
+  const [restNameMn, setRestNameMn] = useState('Гурмэ Бэнто Ресторан');
+  const [restNameEn, setRestNameEn] = useState('Gourmet Bento Restaurant');
+  const [restSubMn, setRestSubMn] = useState('Интерактив цахим меню болон ухаалаг AI захиалгын систем');
+  const [restSubEn, setRestSubEn] = useState('Interactive digital menu and smart AI order assistant');
+
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>([]);
+  const [customStatuses, setCustomStatuses] = useState<CustomStatus[]>([]);
+
+  // Reload partition data on restaurantKey change!
+  useEffect(() => {
+    localStorage.setItem('gourmet_restaurant_key', restaurantKey);
+
+    const savedEmp = localStorage.getItem(`gourmet_employees_${restaurantKey}`);
+    setEmployees(savedEmp ? JSON.parse(savedEmp) : INITIAL_EMPLOYEES);
+
+    const savedDishes = localStorage.getItem(`gourmet_dishes_${restaurantKey}`);
+    setDishes(savedDishes ? JSON.parse(savedDishes) : INITIAL_DISHES);
+
+    const savedOrders = localStorage.getItem(`gourmet_orders_${restaurantKey}`);
+    setOrders(savedOrders ? JSON.parse(savedOrders) : []);
+
+    const savedFeedbacks = localStorage.getItem(`gourmet_feedbacks_${restaurantKey}`);
+    if (savedFeedbacks) {
+      try {
+        setFeedbacks(JSON.parse(savedFeedbacks));
+      } catch (e) {
+        setFeedbacks([]);
+      }
+    } else {
+      setFeedbacks([]);
+    }
+
+    setRestNameMn(localStorage.getItem(`rest_name_mn_${restaurantKey}`) || 'Гурмэ Бэнто Ресторан');
+    setRestNameEn(localStorage.getItem(`rest_name_en_${restaurantKey}`) || 'Gourmet Bento Restaurant');
+    setRestSubMn(localStorage.getItem(`rest_sub_mn_${restaurantKey}`) || 'Интерактив цахим меню болон ухаалаг AI захиалгын систем');
+    setRestSubEn(localStorage.getItem(`rest_sub_en_${restaurantKey}`) || 'Interactive digital menu and smart AI order assistant');
+
+    const savedCats = localStorage.getItem(`gourmet_categories_${restaurantKey}`);
+    setCategories(savedCats ? JSON.parse(savedCats) : DEFAULT_CATEGORIES);
+
+    const savedQs = localStorage.getItem(`gourmet_questions_${restaurantKey}`);
+    setSurveyQuestions(savedQs ? JSON.parse(savedQs) : DEFAULT_SURVEY_QUESTIONS);
+
+    const savedStats = localStorage.getItem(`gourmet_custom_statuses_${restaurantKey}`);
+    setCustomStatuses(savedStats ? JSON.parse(savedStats) : DEFAULT_CUSTOM_STATUSES);
+
+    // Reset client structures
+    setCart([]);
+    const savedActiveOrder = localStorage.getItem(`active_client_order_id_${restaurantKey}`);
+    setActiveClientOrderId(savedActiveOrder || null);
+  }, [restaurantKey]);
+
+  // Persist states reactively
+  useEffect(() => {
+    if (employees.length > 0) {
+      localStorage.setItem(`gourmet_employees_${restaurantKey}`, JSON.stringify(employees));
+    }
+  }, [employees, restaurantKey]);
+
+  useEffect(() => {
+    if (dishes.length > 0) {
+      localStorage.setItem(`gourmet_dishes_${restaurantKey}`, JSON.stringify(dishes));
+    }
+  }, [dishes, restaurantKey]);
+
+  useEffect(() => {
+    localStorage.setItem(`gourmet_orders_${restaurantKey}`, JSON.stringify(orders));
+  }, [orders, restaurantKey]);
+
+  useEffect(() => {
+    localStorage.setItem(`gourmet_feedbacks_${restaurantKey}`, JSON.stringify(feedbacks));
+  }, [feedbacks, restaurantKey]);
+
+  useEffect(() => {
+    if (categories.length > 0) {
+      localStorage.setItem(`gourmet_categories_${restaurantKey}`, JSON.stringify(categories));
+    }
+  }, [categories, restaurantKey]);
+
+  useEffect(() => {
+    if (surveyQuestions.length > 0) {
+      localStorage.setItem(`gourmet_questions_${restaurantKey}`, JSON.stringify(surveyQuestions));
+    }
+  }, [surveyQuestions, restaurantKey]);
+
+  useEffect(() => {
+    if (customStatuses.length > 0) {
+      localStorage.setItem(`gourmet_custom_statuses_${restaurantKey}`, JSON.stringify(customStatuses));
+    }
+  }, [customStatuses, restaurantKey]);
 
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
     const saved = localStorage.getItem('gourmet_current_user');
@@ -434,11 +582,6 @@ export default function App() {
   const [empPin, setEmpPin] = useState('');
   const [empRole, setEmpRole] = useState<'admin' | 'chef' | 'waiter'>('waiter');
 
-  // Sync employees list & current session to localStorage
-  useEffect(() => {
-    localStorage.setItem('gourmet_employees', JSON.stringify(employees));
-  }, [employees]);
-
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('gourmet_current_user', JSON.stringify(currentUser));
@@ -453,17 +596,6 @@ export default function App() {
   const [feedbackSubmitCount, setFeedbackSubmitCount] = useState(0);
   const [adminTableFilter, setAdminTableFilter] = useState<string>('all');
   
-  // Data State managed with localStorage support
-  const [dishes, setDishes] = useState<MenuDish[]>(() => {
-    const saved = localStorage.getItem('gourmet_dishes');
-    return saved ? JSON.parse(saved) : INITIAL_DISHES;
-  });
-
-  const [orders, setOrders] = useState<RestaurantOrder[]>(() => {
-    const saved = localStorage.getItem('gourmet_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
-
   // Client side Selection filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -477,9 +609,7 @@ export default function App() {
   const [notes, setNotes] = useState('');
 
   // Active Submitted Order monitoring for the specific client table
-  const [activeClientOrderId, setActiveClientOrderId] = useState<string | null>(() => {
-    return localStorage.getItem('active_client_order_id') || null;
-  });
+  const [activeClientOrderId, setActiveClientOrderId] = useState<string | null>(null);
 
   // AI Assistant Chat State
   const [chatOpen, setChatOpen] = useState(false);
@@ -503,12 +633,6 @@ export default function App() {
   const [dishAllergens, setDishAllergens] = useState('');
   const [aiGeneratingDescription, setAiGeneratingDescription] = useState(false);
 
-  // Restaurant Profile customized states (persist to localStorage)
-  const [restNameMn, setRestNameMn] = useState(() => localStorage.getItem('rest_name_mn') || 'Гурмэ Бэнто Ресторан');
-  const [restNameEn, setRestNameEn] = useState(() => localStorage.getItem('rest_name_en') || 'Gourmet Bento Restaurant');
-  const [restSubMn, setRestSubMn] = useState(() => localStorage.getItem('rest_sub_mn') || 'Интерактив цахим меню болон ухаалаг AI захиалгын систем');
-  const [restSubEn, setRestSubEn] = useState(() => localStorage.getItem('rest_sub_en') || 'Interactive digital menu and smart AI order assistant');
-
   // Form states for profile inputs
   const [tempNameMn, setTempNameMn] = useState(restNameMn);
   const [tempNameEn, setTempNameEn] = useState(restNameEn);
@@ -528,52 +652,15 @@ export default function App() {
     setRestNameEn(tempNameEn);
     setRestSubMn(tempSubMn);
     setRestSubEn(tempSubEn);
-    localStorage.setItem('rest_name_mn', tempNameMn);
-    localStorage.setItem('rest_name_en', tempNameEn);
-    localStorage.setItem('rest_sub_mn', tempSubMn);
-    localStorage.setItem('rest_sub_en', tempSubEn);
+    localStorage.setItem(`rest_name_mn_${restaurantKey}`, tempNameMn);
+    localStorage.setItem(`rest_name_en_${restaurantKey}`, tempNameEn);
+    localStorage.setItem(`rest_sub_mn_${restaurantKey}`, tempSubMn);
+    localStorage.setItem(`rest_sub_en_${restaurantKey}`, tempSubEn);
     showNotification(t[lang].profileSavedSuccess);
   };
 
   // Notifications
   const [notification, setNotification] = useState<string | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('gourmet_dishes', JSON.stringify(dishes));
-  }, [dishes]);
-
-  useEffect(() => {
-    localStorage.setItem('gourmet_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    if (activeClientOrderId) {
-      localStorage.setItem('active_client_order_id', activeClientOrderId);
-    } else {
-      localStorage.removeItem('active_client_order_id');
-    }
-  }, [activeClientOrderId]);
-
-  // Feedbacks state managed with localStorage support
-  const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>(() => {
-    const saved = localStorage.getItem('gourmet_feedbacks');
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      return parsed.map((item: any) => ({
-        ...item,
-        status: item.status || 'pending',
-        phone: item.phone || '',
-        createdAt: item.createdAt || new Date(item.timestamp || Date.now()).toISOString()
-      }));
-    } catch (e) {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('gourmet_feedbacks', JSON.stringify(feedbacks));
-  }, [feedbacks]);
 
   const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'pending' | 'inprogress' | 'solved'>('all');
 
@@ -590,27 +677,39 @@ export default function App() {
   // Customer satisfaction survey state variable
   const [surveyTaste, setSurveyTaste] = useState(5);
   const [surveyService, setSurveyService] = useState(5);
+  const [surveyRatings, setSurveyRatings] = useState<Record<string, number>>({});
   const [surveyComment, setSurveyComment] = useState('');
   const [surveyPhone, setSurveyPhone] = useState('');
 
   const handleSubmitSurvey = (e: React.FormEvent) => {
     e.preventDefault();
+    const tasteVal = surveyRatings['q-taste'] || surveyRatings[surveyQuestions[0]?.id] || 5;
+    const serviceVal = surveyRatings['q-service'] || surveyRatings[surveyQuestions[1]?.id] || 5;
+    
+    // Ensure we fill values for all active questions
+    const finalRatings = { ...surveyRatings };
+    surveyQuestions.forEach((q) => {
+      if (finalRatings[q.id] === undefined) {
+        finalRatings[q.id] = 5; // default to 5-stars if not specifically touched
+      }
+    });
+
     const newFeedback: CustomerFeedback = {
       id: `feedback-${Date.now()}`,
       tableNumber: tableNo,
-      tasteRating: surveyTaste,
-      serviceRating: surveyService,
+      tasteRating: tasteVal,
+      serviceRating: serviceVal,
       comment: surveyComment.trim(),
       phone: surveyPhone.trim(),
       status: 'pending',
       timestamp: new Date().toLocaleTimeString(lang === 'mn' ? 'mn-MN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' ' + new Date().toLocaleDateString(lang === 'mn' ? 'mn-MN' : 'en-US', { month: 'short', day: 'numeric' }),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ratings: finalRatings
     };
     setFeedbacks(prev => [newFeedback, ...prev]);
     setSurveyComment('');
     setSurveyPhone('');
-    setSurveyTaste(5);
-    setSurveyService(5);
+    setSurveyRatings({});
     setSurveySubmitted(true);
     setFeedbackSubmitCount(prev => prev + 1);
     showNotification(t[lang].srvSuccess);
@@ -1092,6 +1191,11 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
 
   // Filtering out dishes based on visual query
   const filteredDishes = dishes.filter(dish => {
+    if (dish.isHidden === true) return false;
+    
+    const catOfDish = categories.find(c => c.id === dish.category);
+    if (catOfDish && catOfDish.isHidden === true) return false;
+
     const matchesKeyword = 
       dish.nameMn.toLowerCase().includes(searchQuery.toLowerCase()) ||
       dish.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1162,6 +1266,21 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Workspace switcher button in header */}
+            <button
+              type="button"
+              id="workspace_switch_hdr_btn"
+              onClick={() => {
+                setNewWorkspaceKeyInput(restaurantKey);
+                setWorkspaceModalOpen(true);
+              }}
+              className="px-2.5 py-1.5 rounded-lg border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5"
+              title={lang === 'mn' ? 'Байгууллага солих' : 'Switch Workspace/Restaurant'}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-orange-600" />
+              <span className="hidden leading-none xs:inline font-bold">KEY: {restaurantKey}</span>
+            </button>
+
             {/* Lang Switch */}
             <button 
               type="button"
@@ -1253,21 +1372,34 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
 
                 {/* Categories */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1" id="category_scroll_rail">
-                  {(['all', 'traditional', 'western', 'desserts', 'beverages'] as const).map(catId => {
-                    const isActive = activeCategory === catId;
+                  <button
+                    key="all"
+                    type="button"
+                    id={`category_btn_all`}
+                    onClick={() => setActiveCategory('all')}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                      activeCategory === 'all'
+                        ? 'bg-orange-600 text-white shadow-md shadow-orange-500/15'
+                        : 'bg-slate-55 border border-slate-200 text-slate-650 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    {lang === 'mn' ? 'Бүгд' : 'All'}
+                  </button>
+                  {categories.filter(cat => !cat.isHidden).map(cat => {
+                    const isActive = activeCategory === cat.id;
                     return (
                       <button
-                        key={catId}
+                        key={cat.id}
                         type="button"
-                        id={`category_btn_${catId}`}
-                        onClick={() => setActiveCategory(catId)}
+                        id={`category_btn_${cat.id}`}
+                        onClick={() => setActiveCategory(cat.id)}
                         className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
                           isActive 
                             ? 'bg-orange-600 text-white shadow-md shadow-orange-500/15'
                             : 'bg-slate-55 border border-slate-200 text-slate-650 hover:bg-slate-100 hover:text-slate-900'
                         }`}
                       >
-                        {t[lang].categories[catId]}
+                        {lang === 'mn' ? cat.nameMn : cat.nameEn}
                       </button>
                     );
                   })}
@@ -1649,57 +1781,35 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
                   </div>
                 ) : (
                   <form onSubmit={handleSubmitSurvey} className="flex flex-col gap-4 font-normal text-xs" id="survey_form">
-                    {/* Aspect 1: Taste/Quality */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-bold text-[10px] uppercase tracking-wider text-slate-450">
-                        {t[lang].srvTasteRating}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((starVal) => (
-                          <button
-                            key={starVal}
-                            type="button"
-                            onClick={() => setSurveyTaste(starVal)}
-                            className="p-1 hover:scale-110 transition-transform cursor-pointer"
-                          >
-                            <Star 
-                              className={`w-5 h-5 ${
-                                starVal <= surveyTaste ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
-                              }`} 
-                            />
-                          </button>
-                        ))}
-                        <span className="text-[11px] font-mono font-bold text-slate-500 ml-2">
-                          {surveyTaste}/5
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Aspect 2: Customer speed / friendliness */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-bold text-[10px] uppercase tracking-wider text-slate-450">
-                        {t[lang].srvServiceRating}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((starVal) => (
-                          <button
-                            key={starVal}
-                            type="button"
-                            onClick={() => setSurveyService(starVal)}
-                            className="p-1 hover:scale-110 transition-transform cursor-pointer"
-                          >
-                            <Star 
-                              className={`w-5 h-5 ${
-                                starVal <= surveyService ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
-                              }`} 
-                            />
-                          </button>
-                        ))}
-                        <span className="text-[11px] font-mono font-bold text-slate-500 ml-2">
-                          {surveyService}/5
-                        </span>
-                      </div>
-                    </div>
+                    {surveyQuestions.map((q) => {
+                      const currentVal = surveyRatings[q.id] || 5;
+                      return (
+                        <div key={q.id} className="flex flex-col gap-1.5">
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                            {lang === 'mn' ? q.textMn : q.textEn}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((starVal) => (
+                              <button
+                                key={starVal}
+                                type="button"
+                                onClick={() => setSurveyRatings(prev => ({ ...prev, [q.id]: starVal }))}
+                                className="p-1 hover:scale-110 transition-transform cursor-pointer"
+                              >
+                                <Star 
+                                  className={`w-5 h-5 ${
+                                    starVal <= currentVal ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+                                  }`} 
+                                />
+                              </button>
+                            ))}
+                            <span className="text-[11px] font-mono font-bold text-slate-500 ml-2">
+                              {currentVal}/5
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
 
                     {/* Comments */}
                     <div className="flex flex-col gap-1.5">
@@ -1806,6 +1916,14 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
             tempNameEn={tempNameEn}
             setTempNameEn={setTempNameEn}
             handleUpdateProfile={handleUpdateProfile}
+            restaurantKey={restaurantKey}
+            setRestaurantKey={setRestaurantKey}
+            categories={categories}
+            setCategories={setCategories}
+            surveyQuestions={surveyQuestions}
+            setSurveyQuestions={setSurveyQuestions}
+            customStatuses={customStatuses}
+            setCustomStatuses={setCustomStatuses}
           />
         )}
 
@@ -2892,6 +3010,110 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
 
               <div className="text-center text-[10px] text-slate-400 font-medium">
                 {lang === 'mn' ? 'Хөгжүүлэлтийн код: 1234' : 'Developer passcode: 1234'}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Workspace Switching Modal */}
+      <AnimatePresence>
+        {workspaceModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-fade-in" id="workspace_switcher_modal">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 p-6 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col gap-4 relative"
+            >
+              <button
+                type="button"
+                onClick={() => setWorkspaceModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-900 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                <div className="p-2 bg-orange-50 rounded-xl text-orange-700">
+                  <Briefcase className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 tracking-tight">
+                    {lang === 'mn' ? 'Салбар / Салбарт Холбох' : 'Multi-Tenant Workspace Hub'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-normal">
+                    {lang === 'mn' ? 'Өөрийн рестораны түлхүүрийг оруулан тусдаа мэдээллээ удирдана уу.' : 'Switch branches or create a customized new restaurant partition.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 text-xs">
+                <label className="font-bold text-[10px] text-slate-450 uppercase tracking-widest" htmlFor="workspace_key_in">
+                  {lang === 'mn' ? 'Байгууллагын Түлхүүр (KEY)' : 'Organization Workspace Key:'}
+                </label>
+                <input
+                  id="workspace_key_in"
+                  type="text"
+                  value={newWorkspaceKeyInput}
+                  onChange={(e) => setNewWorkspaceKeyInput(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                  placeholder="E.G. BENTO-GRAND"
+                  className="w-full text-center text-sm font-mono border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 outline-none transition-all placeholder:text-slate-350"
+                />
+              </div>
+
+              {/* Presets Row */}
+              <div className="flex flex-col gap-2 pt-1">
+                <span className="font-bold text-[9px] text-slate-400 uppercase tracking-widest block">
+                  {lang === 'mn' ? 'Сонгох болон турших салбарууд:' : 'Select preconfigured branches:'}
+                </span>
+                <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto">
+                  {([
+                    { key: 'BENTO-GRAND', nameMn: '🍱 Bento Grand Lounge (Үндсэн)', nameEn: '🍱 Bento Grand Lounge (Master)' },
+                    { key: 'KHAAN-BUUZ', nameMn: '🥟 Хаан Бууз Сүлжээ', nameEn: '🥟 Khaan Buuz Chain' },
+                    { key: 'SAKURA-SUSHI', nameMn: '🍣 Сакура Сүши Бар', nameEn: '🍣 Sakura Sushi Bar' }
+                  ]).map((prest) => (
+                    <button
+                      key={prest.key}
+                      type="button"
+                      onClick={() => {
+                        setNewWorkspaceKeyInput(prest.key);
+                      }}
+                      className={`text-[11px] font-medium p-2 text-left rounded-xl transition-colors border cursor-pointer ${
+                        newWorkspaceKeyInput === prest.key 
+                          ? 'bg-orange-50 border-orange-200 text-orange-950 font-bold' 
+                          : 'bg-slate-50 hover:bg-slate-100 border-transparent text-slate-700'
+                      }`}
+                    >
+                      <div>{lang === 'mn' ? prest.nameMn : prest.nameEn}</div>
+                      <div className="text-[9px] font-mono text-slate-400 font-bold">KEY: {prest.key}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceModalOpen(false)}
+                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-750 font-bold rounded-xl cursor-pointer transition-colors uppercase text-center"
+                >
+                  {lang === 'mn' ? 'Болих' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanKey = newWorkspaceKeyInput.trim().toUpperCase();
+                    if (cleanKey.length > 0) {
+                      setRestaurantKey(cleanKey);
+                      setWorkspaceModalOpen(false);
+                      showNotification(lang === 'mn' ? `Амжилттай холбогдсон: ${cleanKey}` : `Workspace switched to: ${cleanKey}`);
+                    }
+                  }}
+                  className="py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-extrabold rounded-xl cursor-pointer transition-colors uppercase text-center"
+                >
+                  {lang === 'mn' ? 'Холбох' : 'Switch'}
+                </button>
               </div>
             </motion.div>
           </div>

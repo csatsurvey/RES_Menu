@@ -10,15 +10,38 @@ import {
   Undo, 
   Settings, 
   AlertCircle, 
-  UserCheck 
+  UserCheck,
+  Download,
+  Printer
 } from 'lucide-react';
 import StaffGatingLogin from './StaffGatingLogin';
 import SurveysDashboard from './SurveysDashboard';
 import StaffDirectory from './StaffDirectory';
 
+interface MenuCategory {
+  id: string;
+  nameMn: string;
+  nameEn: string;
+  isHidden: boolean;
+}
+
+interface SurveyQuestion {
+  id: string;
+  textMn: string;
+  textEn: string;
+  type: 'rating' | 'text';
+}
+
+interface CustomStatus {
+  id: string;
+  nameMn: string;
+  nameEn: string;
+  colorClass: string;
+}
+
 interface MenuDish {
   id: string;
-  category: 'traditional' | 'western' | 'desserts' | 'beverages';
+  category: string;
   nameMn: string;
   nameEn: string;
   descMn: string;
@@ -29,6 +52,8 @@ interface MenuDish {
   isVegetarian: boolean;
   isChefSpecial: boolean;
   allergens?: string;
+  cookingTimeMinutes: number;
+  isHidden?: boolean;
 }
 
 interface RestaurantOrder {
@@ -41,9 +66,13 @@ interface RestaurantOrder {
     quantity: number;
   }>;
   totalAmount: number;
+  notes: string;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   timestamp: string;
-  notes?: string;
+  placedAt?: string;
+  preparingAt?: string;
+  readyAt?: string;
+  deliveredAt?: string;
 }
 
 interface CustomerFeedback {
@@ -53,9 +82,10 @@ interface CustomerFeedback {
   serviceRating: number;
   comment: string;
   phone?: string;
-  status: 'pending' | 'inprogress' | 'solved' | 'uncontactable';
+  status: string;
   timestamp: string;
   createdAt?: string;
+  ratings?: Record<string, number>;
 }
 
 interface Employee {
@@ -65,6 +95,8 @@ interface Employee {
   pin: string;
   role: 'admin' | 'chef' | 'waiter';
   createdAt: string;
+  phone?: string;
+  isActive?: boolean;
 }
 
 interface AdminPanelContainerProps {
@@ -132,6 +164,15 @@ interface AdminPanelContainerProps {
   tempNameEn: string;
   setTempNameEn: (val: string) => void;
   handleUpdateProfile: (e: React.FormEvent) => void;
+
+  restaurantKey: string;
+  setRestaurantKey: (val: string) => void;
+  categories: MenuCategory[];
+  setCategories: React.Dispatch<React.SetStateAction<MenuCategory[]>>;
+  surveyQuestions: SurveyQuestion[];
+  setSurveyQuestions: React.Dispatch<React.SetStateAction<SurveyQuestion[]>>;
+  customStatuses: CustomStatus[];
+  setCustomStatuses: React.Dispatch<React.SetStateAction<CustomStatus[]>>;
 }
 
 export default function AdminPanelContainer({
@@ -191,8 +232,224 @@ export default function AdminPanelContainer({
   setTempNameMn,
   tempNameEn,
   setTempNameEn,
-  handleUpdateProfile
+  handleUpdateProfile,
+  restaurantKey,
+  setRestaurantKey,
+  categories,
+  setCategories,
+  surveyQuestions,
+  setSurveyQuestions,
+  customStatuses,
+  setCustomStatuses
 }: AdminPanelContainerProps) {
+
+  // CSV down helper with UTF-8 support for Mongolian Cyrillic template
+  const downloadCSV = (headers: string[], data: any[][], fileName: string) => {
+    const csvRows = [headers.join(",")];
+    for (const row of data) {
+      const escaped = row.map(val => {
+        const s = String(val ?? '').replace(/"/g, '""');
+        return `"${s}"`;
+      });
+      csvRows.push(escaped.join(","));
+    }
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportOrdersToCSV = () => {
+    const headers = [
+      lang === 'mn' ? 'Захиалгын ID' : "Order ID", 
+      lang === 'mn' ? 'Ширээ' : "Table", 
+      lang === 'mn' ? 'Хугацаа' : "Timestamp", 
+      lang === 'mn' ? 'Захиалсан хоолнууд' : "Items", 
+      lang === 'mn' ? 'Нийт төлбөр' : "Total Amount", 
+      lang === 'mn' ? 'Төлөв' : "Status", 
+      lang === 'mn' ? 'Тэмдэглэл' : "Notes"
+    ];
+    const data = orders.map(order => [
+      order.id,
+      order.tableNumber,
+      order.timestamp,
+      order.items.map(it => `${it.quantity}x ${it.name}`).join('; '),
+      order.totalAmount,
+      order.status,
+      order.notes || ''
+    ]);
+    downloadCSV(headers, data, `orders_report_${new Date().toISOString().substring(0,10)}.csv`);
+    showNotification(lang === 'mn' ? 'Захиалгын тайлан (Excel / CSV) татагдлаа!' : 'Orders summary (Excel / CSV) downloaded!');
+  };
+
+  const exportOrdersToPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showNotification(lang === 'mn' ? 'Хөтөчийн pop-up хаалттай байна!' : 'Popup blocker active!');
+      return;
+    }
+    const title = lang === 'mn' ? 'Захиалгын Нэгдсэн Тайлан' : 'Orders Summary Report';
+    const html = `
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px; color: #1e293b; background: #fff; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 20px; }
+          h1 { font-size: 22px; color: #0f172a; margin: 0; font-weight: 800; }
+          .meta { font-size: 11px; color: #64748b; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          th, td { border: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; font-size: 11px; }
+          th { background-color: #f8fafc; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+          tr:nth-child(even) { background-color: #f8fafc; }
+          .total { font-weight: 800; text-align: right; font-size: 13px; margin-top: 25px; padding-top: 15px; border-top: 2px solid #e2e8f0; color: #0f172a; }
+          .status { font-weight: 700; text-transform: uppercase; font-size: 10px; padding: 2px 6px; borderRadius: 4px; display: inline-block; }
+          @media print { button { display: none; } }
+        </style>
+      </head>
+      <body onload="window.print()">
+        <div class="header">
+          <div>
+            <h1>${title}</h1>
+            <p style="margin: 5px 0 0; font-size: 12px; color: #64748b; font-weight: 500;">
+              ${lang === 'mn' ? 'Харуулж буй харагдац: Бүх идэвхтэй захиалга' : 'Active report viewport: All customer live orders'}
+            </p>
+          </div>
+          <div class="meta" style="text-align: right;">
+            <div>${lang === 'mn' ? 'Огноо:' : 'Generated Date:'} ${new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()}</div>
+            <div>${lang === 'mn' ? 'Нийт захиалга:' : 'Total orders:'} ${orders.length}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>${lang === 'mn' ? 'Ширээ' : 'Table'}</th>
+              <th>${lang === 'mn' ? 'Огноо / Хугацаа' : 'Date / Time'}</th>
+              <th>${lang === 'mn' ? 'Хоолны нэрс & Тоо хэмжээ' : 'Items & Quantities'}</th>
+              <th>${lang === 'mn' ? 'Төлөв' : 'Status'}</th>
+              <th style="text-align: right;">${lang === 'mn' ? 'Нийт дүн' : 'Amount'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orders.map(o => `
+              <tr>
+                <td style="font-family: monospace; color: #64748b;">#${o.id.slice(0, 8)}</td>
+                <td style="font-weight: bold;">${o.tableNumber}</td>
+                <td>${o.timestamp}</td>
+                <td style="font-weight: 500;">${o.items.map(it => `${it.quantity}x ${it.name}`).join(', ')}</td>
+                <td><span class="status">${o.status}</span></td>
+                <td style="text-align: right; font-family: monospace; font-weight: bold;">${o.totalAmount.toLocaleString()} ₮</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="total">
+          ${lang === 'mn' ? 'Хүргэгдсэн захиалгын дүн:' : 'Delivered Orders Revenue:'} 
+          <span style="color: #ea580c; font-size: 16px; margin-left: 5px;">
+            ${orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString()} ₮
+          </span>
+        </div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const exportDishesToCSV = () => {
+    const headers = [
+      lang === 'mn' ? 'ID' : "ID", 
+      lang === 'mn' ? 'Ангилал' : "Category", 
+      lang === 'mn' ? 'Нэр (Монгол)' : "Name (MN)", 
+      lang === 'mn' ? 'Нэр (Англи)' : "Name (EN)", 
+      lang === 'mn' ? 'Тайлбар (Монгол)' : "Description (MN)", 
+      lang === 'mn' ? 'Тайлбар (Англи)' : "Description (EN)", 
+      lang === 'mn' ? 'Үнэ (₮)' : "Price (MNT)", 
+      lang === 'mn' ? 'Найрлага / Харшил' : "Allergens", 
+      lang === 'mn' ? 'Онцлох эсэх' : "Chef Special", 
+      lang === 'mn' ? 'Халуун ногоо' : "Spicy", 
+      lang === 'mn' ? 'Цагаан хоол' : "Vegetarian"
+    ];
+    const data = dishes.map(d => [
+      d.id,
+      d.category,
+      d.nameMn,
+      d.nameEn,
+      d.descMn,
+      d.descEn,
+      d.price,
+      d.allergens || '',
+      d.isChefSpecial ? 'Тийм' : 'Үгүй',
+      d.isSpicy ? 'Тийм' : 'Үгүй',
+      d.isVegetarian ? 'Тийм' : 'Үгүй'
+    ]);
+    downloadCSV(headers, data, `dishes_catalog_${new Date().toISOString().substring(0,10)}.csv`);
+    showNotification(lang === 'mn' ? 'Хоолны цэсний тайлан (Excel / CSV) татагдлаа!' : 'Dishes catalog Excel/CSV downloaded!');
+  };
+
+  const exportDishesToPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showNotification(lang === 'mn' ? 'Хөтөчийн pop-up хаалттай байна!' : 'Popup blocker active!');
+      return;
+    }
+    const title = lang === 'mn' ? 'Рестораны Хоолны Цэсний Нэгдсэн Жагсаалт' : 'Restaurant Food Menu Catalog';
+    const html = `
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; background: #fff; }
+          .header { text-align: center; border-bottom: 2px solid #ea580c; padding-bottom: 20px; margin-bottom: 30px; }
+          h1 { font-size: 24px; color: #0f172a; margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em; }
+          .subtitle { font-size: 12px; color: #ea580c; font-weight: 600; text-transform: uppercase; margin-top: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; font-size: 11.5px; }
+          th { background-color: #fff7ed; color: #c2410c; font-weight: 750; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #fdba74; }
+          .cat-badge { font-weight: 800; font-size: 9.5px; text-transform: uppercase; color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+          tr:hover { background-color: #fffbeb; }
+        </style>
+      </head>
+      <body onload="window.print()">
+        <div class="header">
+          <h1>${title}</h1>
+          <div class="subtitle">${lang === 'mn' ? 'Манай рестораны хэрэглэгчдэд нээлттэй хоолны идэвхтэй цэс' : 'Active and available menu directory for our customers'}</div>
+          <p style="margin: 10px 0 0; font-size: 11px; color: #64748b;">${lang === 'mn' ? 'Хэвлэсэн огноо:' : 'Generated Date:'} ${new Date().toLocaleDateString()}</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>${lang === 'mn' ? 'Ангилал' : 'Category'}</th>
+              <th>${lang === 'mn' ? 'Хоолны Нэр (Монгол)' : 'Dish Name (MN)'}</th>
+              <th>${lang === 'mn' ? 'Англи хэл дээрх Нэр' : 'English Name'}</th>
+              <th>${lang === 'mn' ? 'Харшил / Найрлага' : 'Allergens Info'}</th>
+              <th style="text-align: right;">${lang === 'mn' ? 'Үнэ' : 'Price'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dishes.map(d => `
+              <tr>
+                <td><span class="cat-badge">${d.category}</span></td>
+                <td style="font-weight: 800; color: #0f172a;">${d.nameMn}</td>
+                <td style="color: #475569; font-style: italic;">${d.nameEn}</td>
+                <td>${d.allergens || '-'}</td>
+                <td style="text-align: right; font-family: monospace; font-weight: 800; color: #ea580c;">${d.price.toLocaleString()} ₮</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   // Dynamic filter lists
   const filteredOrders = orders.filter(order => {
@@ -349,26 +606,48 @@ export default function AdminPanelContainer({
                       {lang === 'mn' ? 'Ширээний Захиалгуудын Хяналтын Хэсэг' : 'Incoming Client Orders Monitor'}
                     </h3>
 
-                    {/* Table filtering spinner dropdown */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        {lang === 'mn' ? 'Шүүх ширээ:' : 'Filter Table:'}
-                      </span>
-                      <select
-                        id="table_filter_dropdown"
-                        value={adminTableFilter}
-                        onChange={(e) => setAdminTableFilter(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 text-[11px] font-bold rounded-xl px-2.5 py-1 text-slate-700 outline-none focus:border-orange-500 cursor-pointer"
-                      >
-                        <option value="all">
-                          {lang === 'mn' ? 'Бүх ширээ (All)' : 'All Tables'}
-                        </option>
-                        {uniqueOrderTables.map((tb) => (
-                          <option key={tb} value={tb}>
-                            {lang === 'mn' ? `${tb}-р ширээ` : `Table ${tb}`}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Export buttons */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={exportOrdersToCSV}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-705 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer border border-transparent hover:border-emerald-200"
+                        >
+                          <Download className="w-3 h-3 text-slate-500" />
+                          <span>EXCEL (CSV)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={exportOrdersToPDF}
+                          className="px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-705 border border-orange-150 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Printer className="w-3 h-3 text-orange-600" />
+                          <span>PDF / PRINT</span>
+                        </button>
+                      </div>
+
+                      {/* Table filtering spinner dropdown */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          {lang === 'mn' ? 'Шүүх ширээ:' : 'Filter Table:'}
+                        </span>
+                        <select
+                          id="table_filter_dropdown"
+                          value={adminTableFilter}
+                          onChange={(e) => setAdminTableFilter(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 text-[11px] font-bold rounded-xl px-2.5 py-1 text-slate-700 outline-none focus:border-orange-500 cursor-pointer"
+                        >
+                          <option value="all">
+                            {lang === 'mn' ? 'Бүх ширээ (All)' : 'All Tables'}
                           </option>
-                        ))}
-                      </select>
+                          {uniqueOrderTables.map((tb) => (
+                            <option key={tb} value={tb}>
+                              {lang === 'mn' ? `${tb}-р ширээ` : `Table ${tb}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -515,9 +794,30 @@ export default function AdminPanelContainer({
               {/* Dishes Directory ledger */}
               <div className="lg:col-span-8 flex flex-col gap-4">
                 <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-                  <h3 className="text-slate-800 font-extrabold text-sm tracking-tight pb-3 border-b border-slate-100">
-                    {lang === 'mn' ? 'Манай цэсэнд байгаа хоолнуудын жагсаалт' : 'Food Dishes Catalogue ledgers'}
-                  </h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <h3 className="text-slate-800 font-extrabold text-sm tracking-tight">
+                      {lang === 'mn' ? 'Манай цэсэнд байгаа хоолнуудын жагсаалт' : 'Food Dishes Catalogue ledgers'}
+                    </h3>
+                    
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={exportDishesToCSV}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-705 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer border border-transparent hover:border-emerald-200"
+                      >
+                        <Download className="w-3 h-3 text-slate-500" />
+                        <span>EXCEL (CSV)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportDishesToPDF}
+                        className="px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-705 border border-orange-150 text-[10px] font-extrabold rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Printer className="w-3 h-3 text-orange-600" />
+                        <span>PDF / PRINT</span>
+                      </button>
+                    </div>
+                  </div>
 
                   <div className="flex flex-col gap-2 mt-4">
                     {dishes.map((dish) => (
