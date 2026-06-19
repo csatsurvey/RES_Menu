@@ -83,6 +83,7 @@ app.post('/api/generate', async (req, res) => {
     });
 
     res.json({
+      success: true,
       text: response.text || '',
       groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
       fullResponse: response
