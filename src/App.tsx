@@ -1087,7 +1087,7 @@ export default function App() {
   const generateAiDescription = async () => {
     const activeDishName = lang === 'mn' ? dishNameMn : dishNameEn;
     if (!activeDishName) {
-      alert(lang === 'mn' ? 'AI тайлбар бичихийн өмнө хоолны нэрийг оруулна уу!' : 'Please write dish name to let Gemini write an exclusive description!');
+      alert(lang === 'mn' ? 'AI тайлбар бичихийн өмнө хоолны нэрийг оруулна уу!' : 'Please write dish name to let Claude write an exclusive description!');
       return;
     }
 
@@ -1106,7 +1106,7 @@ Do not include any extra introductory markdown or conversational code block head
         body: JSON.stringify({
           prompt: queryPrompt,
           temperature: 0.7,
-          model: 'gemini-3.5-flash'
+          model: 'claude-sonnet-4-6'
         })
       });
 
@@ -1128,7 +1128,7 @@ Do not include any extra introductory markdown or conversational code block head
 
         setDishDescMn(mnPart);
         setDishDescEn(enPart);
-        showNotification(lang === 'mn' ? 'AI Текст үүсгэлээ!' : 'Gemini AI crafted dish descriptions!');
+        showNotification(lang === 'mn' ? 'AI Текст үүсгэлээ!' : 'Claude AI crafted dish descriptions!');
       } else {
         throw new Error(result.error || 'Server error');
       }
@@ -1171,7 +1171,7 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
           prompt: userMsg,
           systemInstruction,
           temperature: 0.5,
-          model: 'gemini-3.5-flash'
+          model: 'claude-sonnet-4-6'
         })
       });
 
@@ -2770,7 +2770,7 @@ Keep your answer friendly, tasty, clear, and very concise (under 2-3 short sente
                   </div>
                   <div>
                     <span className="font-bold text-xs block leading-tight">{t[lang].aiAssistantTitle}</span>
-                    <span className="text-[9px] text-[#A1A1AA] font-mono tracking-widest uppercase">Gemini Agent</span>
+                    <span className="text-[9px] text-[#A1A1AA] font-mono tracking-widest uppercase">Claude AI</span>
                   </div>
                 </div>
                 <button 
