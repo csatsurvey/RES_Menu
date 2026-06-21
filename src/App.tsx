@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Branch, Table, Order, Survey, Staff, MenuItem,
   getAllBranches, createBranch, getBranch, verifyManagerPin, verifyStaffPin,
@@ -7,7 +7,7 @@ import {
   subscribeToSurveys, createSurvey, setSurveyResolved,
   subscribeToMenu, saveMenuItem, deleteMenuItem, compressImage,
   getStaff, addStaff, removeStaff, updateStaff,
-  getSettings, saveSettings, subscribeToSettings, BranchSettings,
+  getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -197,7 +197,7 @@ function SurveyModal({ branchId, tableNum, onClose }: { branchId:string; tableNu
     }
   };
 
-  const StarRow = ({ qKey, label }: { qKey: keyof SurveyData; label: string }) => (
+  const StarRow = ({ qKey, label }: { key?: React.Key; qKey: keyof SurveyData; label: string }) => (
     <div style={{background:C.inpBg,borderRadius:'12px',padding:'1rem',marginBottom:'0.5rem'}}>
       <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.88rem'}}>{label}</p>
       <div style={{display:'flex',gap:'0.4rem'}}>
@@ -439,7 +439,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const [deleteTarget, setDeleteTarget] = useState<string|null>(null);
   const [tableCount, setTableCount] = useState('5');
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffRole, setNewStaffRole] = useState<'chef'|'waiter'>('chef');
+  const [newStaffRole, setNewStaffRole] = useState<'chef'|'waiter'|'admin'>('chef');
   const [newStaffPin, setNewStaffPin] = useState('');
   const [showQR, setShowQR] = useState<number|null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
@@ -638,7 +638,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
               <input value={newStaffName} onChange={e=>setNewStaffName(e.target.value)} placeholder="Нэр" style={inp}/>
               <select value={newStaffRole} onChange={e=>setNewStaffRole(e.target.value as any)} style={{...inp}}><option value="chef">👨‍🍳 Тогооч</option><option value="waiter">🛎️ Зөөгч</option></select>
               <input value={newStaffPin} onChange={e=>setNewStaffPin(e.target.value)} type="password" placeholder="PIN" style={inp}/>
-              <button onClick={async()=>{if(!newStaffName||!newStaffPin)return;await addStaff(branchId,newStaffName,newStaffRole,newStaffPin);getStaff(branchId).then(setStaffList);setNewStaffName('');setNewStaffPin('');}}
+              <button onClick={async()=>{if(!newStaffName||!newStaffPin)return;await addStaff(branchId,newStaffName,newStaffRole as 'chef'|'waiter',newStaffPin);getStaff(branchId).then(setStaffList);setNewStaffName('');setNewStaffPin('');}}
                 style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
             </div>
           </div>
@@ -654,37 +654,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
           ))}
         </>}
 
-        {/* ── SETTINGS ── */}
-        {tab==='settings'&&<>
-          <div style={card}>
-            <p style={{fontWeight:'800',color:C.yellow,fontSize:'0.85rem',letterSpacing:'0.04em',margin:'0 0 0.75rem',textTransform:'uppercase' as const}}>⚙️ Тохиргоо & QR</p>
-            <div style={{background:C.inpBg,borderRadius:'10px',padding:'1rem',marginBottom:'1rem',border:`1px solid ${C.border}`}}>
-              <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.7rem',letterSpacing:'0.05em',margin:'0 0 0.6rem',textTransform:'uppercase' as const}}>CSAT СУДАЛГААНЫ АСУУЛТУУД</p>
-              {SURVEY_QUESTIONS.map((q,i)=>(
-                <div key={q.key} style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.4rem'}}>
-                  <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.75rem',width:'16px',flexShrink:0}}>{i+1}.</span>
-                  <div style={{flex:1,padding:'0.45rem 0.75rem',background:'rgba(255,255,255,0.04)',borderRadius:'8px',border:`1px solid ${C.border}`}}>
-                    <span style={{color:'rgba(255,255,255,0.8)',fontSize:'0.82rem'}}>{q.label.replace(/^\d+\.\s*/,'')}</span>
-                  </div>
-                </div>
-              ))}
-              <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.72rem',margin:'0.5rem 0 0'}}>+ NPS: Найз нөхөддөө санал болгох магадлал (0-10)</p>
-            </div>
-            <p style={{color:C.muted,fontSize:'0.75rem',letterSpacing:'0.06em',margin:'0 0 0.75rem',textTransform:'uppercase' as const}}>СТАТИК QR ХЭВЛЭЛТ</p>
-            <div style={{display:'flex',gap:'0.75rem',alignItems:'center',flexWrap:'wrap'}}>
-              <select value={showQR||''} onChange={e=>setShowQR(Number(e.target.value)||null)}
-                style={{padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'160px'}}>
-                <option value="">Ширээ сонгох</option>
-                {tables.map(t=><option key={t.id} value={t.number}>Ширээ {String(t.number).padStart(2,'0')}</option>)}
-              </select>
-              {showQR&&<>
-                <button onClick={()=>{const w=window.open('','_blank');if(w){w.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>QR — Ширээ ${showQR}</title><style>@page{margin:0}body{margin:0;padding:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.top{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.sub{font-size:0.75rem;color:#888;margin-bottom:16px}.qr img{width:200px;height:200px}.name{font-size:1rem;font-weight:700;color:#222;margin:12px 0 4px}.table{font-size:0.85rem;color:#555;margin-bottom:12px}.divider{border:none;border-top:1px solid #eee;margin:12px 0}.survey{font-size:0.78rem;color:#666;line-height:1.5}</style></head><body><div class='card'><div class='top'>МЕНЮ</div><div class='sub'>QR код скан хийж захиалгаа өгнө үү</div><div class='qr'><img src='${buildQR(branchId,showQR)}'/></div><div class='name'>${branchName}</div><div class='table'>Ширээ ${showQR}</div><hr class='divider'/><div class='survey'>⭐ Хоол идсэний дараа сэтгэл ханамжийн<br/>судалгаа бөглөх боломжтой</div></div><script>window.onload=function(){window.print()}<\/script></body></html>`);w.document.close();}}}
-                  style={{padding:'0.6rem 1.25rem',background:C.orange,border:'none',borderRadius:'10px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
-                  🖨️ ШИРЭЭНИЙ ПОСТЕР QR ХЭВЛЭХ
-                </button>
-                <img src={buildQR(branchId,showQR)} alt="" style={{width:'80px',borderRadius:'8px'}}/>
-              </>}
-        </>}
+        {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} onSetTables={setTablesDB} inp={inp}/> }
 
         {/* ── ORDERS (Kitchen view with tabs) ── */}
         {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
@@ -749,7 +719,7 @@ const CQ = [
 // ════════════════════════════════════════════════════════
 type KitchenFilter = 'all'|'pending'|'preparing'|'ready';
 
-function OrderCard({o,branchId}:{o:Order;branchId:string}) {
+function OrderCard({o,branchId}:{key?:React.Key;o:Order;branchId:string}) {
   const NEXT:Partial<Record<Order['status'],Order['status']>>={pending:'preparing',preparing:'ready',ready:'served'};
   const NEXT_LABEL:Partial<Record<Order['status'],string>>={pending:'👨‍🍳 Бэлтгэж эхлэх',preparing:'✅ Бэлэн боллоо',ready:'🛎️ Хүргэгдсэн'};
   const NEXT_COLOR:Partial<Record<Order['status'],string>>={pending:'#3B82F6',preparing:'#10B981',ready:'#8B5CF6'};
@@ -831,7 +801,7 @@ function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
   );
 }
 
-function SurveyCard({s,showActions,note,onNoteChange,onResolve,onUnresolve}:{s:Survey;showActions:boolean;note:string;onNoteChange:(v:string)=>void;onResolve:()=>void;onUnresolve:()=>void}) {
+function SurveyCard({s,showActions,note,onNoteChange,onResolve,onUnresolve}:{key?:React.Key;s:Survey;showActions:boolean;note:string;onNoteChange:(v:string)=>void;onResolve:()=>void;onUnresolve:()=>void}) {
   return(
     <div style={{background:C.card,borderRadius:'14px',padding:'1.25rem',border:`1px solid ${C.border}`,marginBottom:'0.75rem'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
@@ -915,7 +885,7 @@ function ComplaintTabs({ branchId, pending, resolved, anonymous, onResolve, onUn
 // ════════════════════════════════════════════════════════
 // SETTINGS TAB
 // ════════════════════════════════════════════════════════
-function SettingsTab({branchId,tables,onSetTables,logs,inp}:{branchId:string;tables:Table[];onSetTables:(id:string,n:number)=>Promise<void>;logs:ActivityLog[];inp:React.CSSProperties}) {
+function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:Table[];onSetTables:(id:string,n:number)=>Promise<void>;inp:React.CSSProperties}) {
   const [tableCount,setTableCount]=useState(String(tables.length||5));
   const [qrTopText,setQrTopText]=useState('МЕНЮ');
   const [qrBottomText,setQrBottomText]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
@@ -932,7 +902,6 @@ function SettingsTab({branchId,tables,onSetTables,logs,inp}:{branchId:string;tab
       if(s.surveyQuestions)setQuestions(s.surveyQuestions);
       else setQuestions(['Хоолны амт, чанар хэр байсан бэ?','Рестораны орчин тойрон, цэвэр байдал','Үйлчилгээний ажилтан, зөөгчийн харилцаа хандлага','Хоолны үнэ өртөг чанартаа нийцэж байна уу?','Нийт сэтгэл ханамж хэр байна?']);
     });
-    subscribeToTables(branchId,()=>{});
   },[branchId]);
 
   useEffect(()=>{setTableCount(String(tables.length||5));},[tables.length]);
