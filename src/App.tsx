@@ -239,6 +239,7 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
         </div>
         <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
           {activeOrder&&<button onClick={()=>setPhase('tracking')} style={{background:'rgba(255,255,255,0.08)',border:`1px solid ${D.border}`,color:ORDER_STATUS_COLORS[activeOrder.status],borderRadius:'20px',padding:'0.3rem 0.75rem',fontSize:'0.72rem',cursor:'pointer',fontWeight:'700'}}>● {ORDER_STATUS_LABELS[activeOrder.status]}</button>}
+          <button onClick={()=>setPhase('survey')} style={{background:'rgba(255,255,255,0.08)',border:`1px solid ${D.border}`,borderRadius:'10px',padding:'0.4rem 0.75rem',color:D.accent,cursor:'pointer',fontWeight:'700',fontSize:'0.78rem'}}>⭐ Судалгаа</button>
           <button onClick={()=>setShowCart(true)} style={{background:'rgba(255,255,255,0.08)',border:`1px solid ${D.border}`,borderRadius:'10px',padding:'0.4rem 0.75rem',color:D.text,cursor:'pointer',fontWeight:'600',fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
             🛒 {cnt>0&&<span style={{background:D.orange,color:'white',borderRadius:'50%',width:'18px',height:'18px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.7rem',fontWeight:'800'}}>{cnt}</span>}
           </button>
@@ -305,8 +306,7 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
             </div>)}
             <div style={{display:'flex',justifyContent:'space-between',marginTop:'1rem',paddingTop:'1rem',borderTop:`1px solid ${D.border}`,fontWeight:'800',fontSize:'1.1rem'}}><span style={{color:D.text}}>Нийт</span><span style={{color:D.accent}}>{formatPrice(total)}</span></div>
             <div style={{marginTop:'1rem',display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="☎ Утасны дугаар" style={{padding:'0.75rem',background:'rgba(255,255,255,0.05)',border:`1px solid ${D.border}`,borderRadius:'12px',fontSize:'0.9rem',outline:'none',color:D.text}}/>
-              <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="📝 Нэмэлт тайлбар..." rows={2} style={{padding:'0.75rem',background:'rgba(255,255,255,0.05)',border:`1px solid ${D.border}`,borderRadius:'12px',fontSize:'0.9rem',outline:'none',color:D.text,resize:'none'}}/>
+              <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="📝 Нэмэлт тайлбар (заавал биш)..." rows={2} style={{padding:'0.75rem',background:'rgba(255,255,255,0.05)',border:`1px solid ${D.border}`,borderRadius:'12px',fontSize:'0.9rem',outline:'none',color:D.text,resize:'none'}}/>
               <button onClick={placeOrder} disabled={loading} style={{padding:'1rem',background:D.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1,fontSize:'1rem'}}>{loading?'Илгээж байна...':'✅ Захиалах'}</button>
             </div>
           </>}
