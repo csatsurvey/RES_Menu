@@ -505,3 +505,71 @@ export const subscribeToLogs = (
   });
   return () => off(r, 'value', h);
 };
+
+// ── Categories ────────────────────────────────────────────────
+export interface Category {
+  id: string;
+  name: string;
+  visible: boolean;
+  sortOrder: number;
+}
+
+export const saveCategory = async (
+  branchId: string, name: string, catId?: string
+): Promise<string> => {
+  if (catId) {
+    await update(ref(db, `branches/${branchId}/categories/${catId}`), { name });
+    return catId;
+  }
+  const r = push(ref(db, `branches/${branchId}/categories`));
+  await set(r, { name, visible: true, sortOrder: Date.now() });
+  return r.key!;
+};
+
+export const updateCategory = async (
+  branchId: string, catId: string,
+  data: Partial<Pick<Category, 'name' | 'visible' | 'sortOrder'>>
+): Promise<void> => {
+  await update(ref(db, `branches/${branchId}/categories/${catId}`), data);
+};
+
+export const deleteCategory = async (branchId: string, catId: string): Promise<void> => {
+  await remove(ref(db, `branches/${branchId}/categories/${catId}`));
+};
+
+export const subscribeToCategories = (
+  branchId: string,
+  cb: (cats: Category[]) => void
+): (() => void) => {
+  const r = ref(db, `branches/${branchId}/categories`);
+  const h = onValue(r, snap => {
+    if (!snap.exists()) { cb([]); return; }
+    cb(Object.entries(snap.val())
+      .map(([id, val]: any) => ({ id, ...val }))
+      .sort((a: Category, b: Category) => a.sortOrder - b.sortOrder));
+  });
+  return () => off(r, 'value', h);
+};
+
+// ── Sales Report ──────────────────────────────────────────────
+export const getSalesReport = async (
+  branchId: string,
+  fromMs: number
+): Promise<{ totalRevenue: number; orderCount: number; avgOrder: number; byCategory: Record<string, number> }> => {
+  const snap = await get(ref(db, `branches/${branchId}/orders`));
+  if (!snap.exists()) return { totalRevenue: 0, orderCount: 0, avgOrder: 0, byCategory: {} };
+  const orders: Order[] = Object.values(snap.val()).filter(
+    (o: any) => o.createdAt >= fromMs && o.status === 'served'
+  ) as Order[];
+  const totalRevenue = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const byCategory: Record<string, number> = {};
+  orders.forEach(o => o.items?.forEach(item => {
+    byCategory[item.name] = (byCategory[item.name] || 0) + item.price * item.quantity;
+  }));
+  return {
+    totalRevenue,
+    orderCount: orders.length,
+    avgOrder: orders.length ? Math.round(totalRevenue / orders.length) : 0,
+    byCategory,
+  };
+};
