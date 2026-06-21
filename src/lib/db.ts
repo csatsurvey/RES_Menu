@@ -433,3 +433,74 @@ export const compressImage = (
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
     img.src = url;
   });
+
+// ── Branch Settings (survey questions, QR text) ──────────────
+export interface BranchSettings {
+  surveyQuestions?: string[];
+  qrTopText?: string;
+  qrBottomText?: string;
+}
+
+export const getSettings = async (branchId: string): Promise<BranchSettings> => {
+  const snap = await get(ref(db, `branches/${branchId}/settings`));
+  return snap.exists() ? snap.val() : {};
+};
+
+export const saveSettings = async (branchId: string, s: Partial<BranchSettings>): Promise<void> => {
+  await update(ref(db, `branches/${branchId}/settings`), s);
+};
+
+export const subscribeToSettings = (
+  branchId: string,
+  cb: (s: BranchSettings) => void
+): (() => void) => {
+  const r = ref(db, `branches/${branchId}/settings`);
+  const h = onValue(r, snap => cb(snap.exists() ? snap.val() : {}));
+  return () => off(r, 'value', h);
+};
+
+// ── Staff (extended: active, admin role) ─────────────────────
+export const updateStaff = async (
+  branchId: string,
+  staffId: string,
+  data: Partial<{ name: string; role: string; pin: string; active: boolean }>
+): Promise<void> => {
+  await update(ref(db, `branches/${branchId}/staff/${staffId}`), data);
+};
+
+// ── Activity Log ──────────────────────────────────────────────
+export interface ActivityLog {
+  id: string;
+  staffName: string;
+  action: string;
+  details: string;
+  createdAt: number;
+}
+
+export const logActivity = async (
+  branchId: string,
+  staffName: string,
+  action: string,
+  details = ''
+): Promise<void> => {
+  try {
+    const r = push(ref(db, `branches/${branchId}/logs`));
+    await set(r, { staffName, action, details, createdAt: Date.now() });
+  } catch { /* silent */ }
+};
+
+export const subscribeToLogs = (
+  branchId: string,
+  cb: (logs: ActivityLog[]) => void
+): (() => void) => {
+  const r = ref(db, `branches/${branchId}/logs`);
+  const h = onValue(r, snap => {
+    if (!snap.exists()) { cb([]); return; }
+    const logs = Object.entries(snap.val())
+      .map(([id, val]: any) => ({ id, ...val }))
+      .sort((a: ActivityLog, b: ActivityLog) => b.createdAt - a.createdAt)
+      .slice(0, 150);
+    cb(logs);
+  });
+  return () => off(r, 'value', h);
+};
