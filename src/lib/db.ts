@@ -22,8 +22,9 @@ export interface Table {
 export interface Staff {
   id: string;
   name: string;
-  role: 'chef' | 'waiter';
+  role: 'chef' | 'waiter' | 'admin';
   pin: string;
+  active?: boolean;
 }
 
 export interface MenuItem {
@@ -167,7 +168,7 @@ export const subscribeToTables = (
 export const addStaff = async (
   branchId: string,
   name: string,
-  role: 'chef' | 'waiter',
+  role: 'chef' | 'waiter' | 'admin',
   pin: string
 ): Promise<string> => {
   const staffRef = push(ref(db, `branches/${branchId}/staff`));
@@ -463,7 +464,7 @@ export const subscribeToSettings = (
 export const updateStaff = async (
   branchId: string,
   staffId: string,
-  data: Partial<{ name: string; role: string; pin: string; active: boolean }>
+  data: Partial<{ name: string; role: 'chef' | 'waiter' | 'admin'; pin: string; active: boolean }>
 ): Promise<void> => {
   await update(ref(db, `branches/${branchId}/staff/${staffId}`), data);
 };
@@ -486,7 +487,7 @@ export const logActivity = async (
   try {
     const r = push(ref(db, `branches/${branchId}/logs`));
     await set(r, { staffName, action, details, createdAt: Date.now() });
-  } catch { /* silent */ }
+  } catch(e) { /* silent */ }
 };
 
 export const subscribeToLogs = (
