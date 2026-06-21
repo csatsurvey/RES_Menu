@@ -8,6 +8,8 @@ import {
   subscribeToMenu, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
   getStaff, addStaff, removeStaff, updateStaff,
   getSettings, saveSettings,
+  Category, saveCategory, updateCategory, deleteCategory, subscribeToCategories,
+  getSalesReport,
   logActivity, subscribeToLogs, ActivityLog,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -302,7 +304,7 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
         <div style={{display:'flex',gap:'0.5rem'}}>
           <button onClick={()=>setShowTracking(true)}
             style={{background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',padding:'0.45rem 0.875rem',color:C.yellow,cursor:'pointer',fontWeight:'700',fontSize:'0.78rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
-            🛒 Захиалгын явц ({cnt})
+            🛒 Захиалгын явц ({orders.filter(o=>o.status!=='served').length||''})
           </button>
 
         </div>
@@ -404,16 +406,19 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
             <h3 style={{color:C.yellow,fontWeight:'800',margin:0}}>📋 Захиалгын явц · Ширээ {tableNum}</h3>
             <button onClick={()=>setShowTracking(false)} style={{background:C.inpBg,border:'none',color:C.muted,width:'32px',height:'32px',borderRadius:'50%',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
           </div>
-          {activeOrder?(
-            <div style={{background:C.inpBg,borderRadius:'12px',padding:'1rem'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
-                <span style={{color:C.text,fontWeight:'700'}}>Одоогийн захиалга</span>
-                <span style={{fontWeight:'800',padding:'0.3rem 0.75rem',borderRadius:'20px',fontSize:'0.8rem',background:ORDER_STATUS_COLORS[activeOrder.status]+'22',color:ORDER_STATUS_COLORS[activeOrder.status]}}>{ORDER_STATUS_LABELS[activeOrder.status]}</span>
+          {orders.filter(o=>o.status!=='served').length===0
+            ?<p style={{textAlign:'center',color:C.muted,padding:'2rem 0',fontSize:'0.9rem'}}>Идэвхтэй захиалга байхгүй байна</p>
+            :orders.filter(o=>o.status!=='served').map((ord,idx)=>(
+              <div key={ord.id} style={{background:C.inpBg,borderRadius:'12px',padding:'1rem',marginBottom:'0.75rem',border:`1px solid ${ORDER_STATUS_COLORS[ord.status]}44`}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.6rem'}}>
+                  <span style={{color:'rgba(255,255,255,0.6)',fontSize:'0.75rem',fontWeight:'600'}}>ЗАХИАЛГА #{idx+1}</span>
+                  <span style={{fontWeight:'800',padding:'0.25rem 0.65rem',borderRadius:'20px',fontSize:'0.75rem',background:ORDER_STATUS_COLORS[ord.status]+'22',color:ORDER_STATUS_COLORS[ord.status]}}>{ORDER_STATUS_LABELS[ord.status]}</span>
+                </div>
+                {ord.items.map((it,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'0.85rem',color:'rgba(255,255,255,0.75)',padding:'0.2rem 0'}}><span>{it.name} × {it.quantity}</span><span>{formatPrice(it.price*it.quantity)}</span></div>)}
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:'0.6rem',paddingTop:'0.6rem',borderTop:`1px solid ${C.border}`,fontWeight:'800'}}><span style={{color:C.text,fontSize:'0.85rem'}}>Нийт</span><span style={{color:C.yellow,fontSize:'0.9rem'}}>{formatPrice(ord.totalAmount)}</span></div>
               </div>
-              {activeOrder.items.map((it,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'0.875rem',color:C.muted,padding:'0.25rem 0'}}><span>{it.name} × {it.quantity}</span><span>{formatPrice(it.price*it.quantity)}</span></div>)}
-              <div style={{display:'flex',justifyContent:'space-between',marginTop:'0.75rem',paddingTop:'0.75rem',borderTop:`1px solid ${C.border}`,fontWeight:'800'}}><span style={{color:C.text}}>Нийт</span><span style={{color:C.yellow}}>{formatPrice(activeOrder.totalAmount)}</span></div>
-            </div>
-          ):<p style={{textAlign:'center',color:C.muted,padding:'2rem 0'}}>Идэвхтэй захиалга байхгүй</p>}
+            ))
+          }
         </div>
       </div>}
 
@@ -431,7 +436,7 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
 // ════════════════════════════════════════════════════════
 // ADMIN PANEL
 // ════════════════════════════════════════════════════════
-type AdminTab = 'dashboard'|'complaints'|'menu'|'staff'|'tables'|'orders'|'settings'|'logs';
+type AdminTab = 'dashboard'|'complaints'|'menu'|'categories'|'staff'|'tables'|'orders'|'settings'|'logs';
 
 function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string; onLogout:()=>void; isManager:boolean; staff:Staff|null }) {
   const [tab, setTab] = useState<AdminTab>(isManager?'dashboard':'orders');
@@ -450,6 +455,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const [newStaffPin, setNewStaffPin] = useState('');
   const [showQR, setShowQR] = useState<number|null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [salesReport, setSalesReport] = useState<any>(null);
   const [resolveNote, setResolveNote] = useState<Record<string,string>>({});
   const [editingStaff, setEditingStaff] = useState<Staff|null>(null);
   const pendingOrders = orders.filter(o=>o.status==='pending').length;
@@ -462,7 +469,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
     const u3=subscribeToMenu(branchId,setMenuItems);
     const u4=subscribeToTables(branchId,t=>{setTablesState(t);setTableCount(String(t.length||5));});
     const u5=subscribeToLogs(branchId,setLogs);
-    return()=>{u1();u2();u3();u4();u5();};
+    const u6=subscribeToCategories(branchId,setCategories);
+    return()=>{u1();u2();u3();u4();u5();u6();};
   },[branchId]);
 
   // Filter surveys by date
@@ -492,6 +500,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
     {id:'tables',label:'Ширээ & QR',icon:'🪑'},
     {id:'staff',label:'Ажилтан & ПИН шинэчлэх',icon:'👤'},
     {id:'orders',label:`Ширээний захиалгууд (${pendingOrders})`,icon:'📋'},
+    {id:'categories' as AdminTab,label:'Ангилал удирдах',icon:'🏷️'},
     {id:'settings' as AdminTab,label:'Тохиргоо & QR',icon:'⚙️'},
     {id:'logs' as AdminTab,label:'Үйл ажиллагааны лог',icon:'📜'},
   ];
@@ -549,6 +558,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
             ))}
           </div>
 
+          <DashboardExplanation surveys={filteredSurveys} dateFilter={dateFilter}/>
           {/* Per-question averages */}
           <div style={card}>
             <p style={{color:C.text,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.04em',margin:'0 0 1rem',textTransform:'uppercase'}}>📊 Талбар бүрийн дундаж үнэлгээ</p>
@@ -572,6 +582,11 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
                 </div>
               );
             })}
+          </div>
+          {/* Sales quick stats */}
+          <div style={{background:C.card,borderRadius:'14px',padding:'1rem',border:`1px solid ${C.border}`,marginTop:'0.75rem'}}>
+            <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>💰 Борлуулалтын тойм ({['Өнөөдөр','7 хоног','1 сар','3 сар','1 жил'][['today','7d','1m','3m','1y'].indexOf(dateFilter)]})</p>
+            <SalesSection branchId={branchId} fromMs={Date.now()-filterMs[dateFilter]}/>
           </div>
         </>}
 
@@ -640,22 +655,11 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
         {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} onSetTables={setTablesDB} inp={inp}/> }
 
         {/* ── ORDERS (Kitchen view with tabs) ── */}
+        {tab==='categories'&&<CategoryTab branchId={branchId} categories={categories} logAct={(a,d)=>logActivity(branchId,'Менежер',a,d||'')}/>}
         {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
-        {tab==='logs'&&<>
-          <p style={{color:C.muted,fontSize:'0.8rem',margin:'0 0 1rem'}}>Сүүлийн 150 үйл ажиллагаа</p>
-          {!logs.length&&<div style={{textAlign:'center',padding:'3rem',color:'rgba(255,255,255,0.3)'}}><div style={{fontSize:'3rem'}}>📜</div><p>Лог байхгүй</p></div>}
-          {logs.map(l=>(
-            <div key={l.id} style={{background:C.card,borderRadius:'10px',padding:'0.75rem 1rem',border:`1px solid ${C.border}`,marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'1rem'}}>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{color:'rgba(255,255,255,0.85)',fontWeight:'700',margin:'0 0 0.15rem',fontSize:'0.875rem'}}>{l.action}</p>
-                {l.details&&<p style={{color:'rgba(255,255,255,0.5)',margin:0,fontSize:'0.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{l.details}</p>}
-              </div>
-              <div style={{textAlign:'right',flexShrink:0}}>
-                <p style={{color:C.yellow,fontSize:'0.78rem',fontWeight:'600',margin:'0 0 0.1rem'}}>{l.staffName}</p>
-                <p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.72rem',margin:0}}>{formatDate(l.createdAt)} {formatTime(l.createdAt)}</p>
-              </div>
-            </div>
-          ))}
+        {tab==='logs'&&<LogsTab logs={logs}/>}
+        {false&&<>
+          <p style={{color:C.muted,fontSize:'0.8rem',margin:'0 0 1rem'}}>placeholder</p>
         </>}
       </div>
 
@@ -868,6 +872,226 @@ function ComplaintTabs({ branchId, pending, resolved, anonymous, onResolve, onUn
 
 // ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════
+// SALES SECTION (in dashboard)
+// ════════════════════════════════════════════════════════
+function SalesSection({branchId,fromMs}:{branchId:string;fromMs:number}) {
+  const [data,setData]=useState<any>(null);
+  useEffect(()=>{getSalesReport(branchId,fromMs).then(setData);},[fromMs]);
+  if(!data)return<p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Ачаалж байна...</p>;
+  return(
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'0.75rem'}}>
+        {[
+          {l:'Нийт орлого',v:formatPrice(data.totalRevenue),c:C.green},
+          {l:'Захиалгын тоо',v:String(data.orderCount),c:C.yellow},
+          {l:'Дундаж захиалга',v:formatPrice(data.avgOrder),c:'#5eead4'},
+        ].map(s=>(
+          <div key={s.l} style={{background:C.inpBg,borderRadius:'8px',padding:'0.65rem',textAlign:'center' as const}}>
+            <p style={{color:s.c,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.15rem'}}>{s.v}</p>
+            <p style={{color:'rgba(255,255,255,0.4)',fontSize:'0.65rem',margin:0}}>{s.l}</p>
+          </div>
+        ))}
+      </div>
+      {Object.entries(data.byCategory).length>0&&(
+        <div>
+          <p style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.4rem'}}>Хамгийн их борлуулалттай</p>
+          {Object.entries(data.byCategory).sort(([,a]:any,[,b]:any)=>b-a).slice(0,5).map(([name,rev]:any)=>(
+            <div key={name} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',borderBottom:`1px solid ${C.border}`,fontSize:'0.8rem'}}>
+              <span style={{color:'rgba(255,255,255,0.7)'}}>{name}</span>
+              <span style={{color:C.green,fontWeight:'700'}}>{formatPrice(rev)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {data.orderCount===0&&<p style={{color:C.muted,fontSize:'0.82rem',textAlign:'center' as const,padding:'0.5rem 0'}}>Энэ хугацаанд хүргэгдсэн захиалга байхгүй</p>}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// LOGS TAB with date filter
+// ════════════════════════════════════════════════════════
+function LogsTab({logs}:{logs:ActivityLog[]}) {
+  const [filter,setFilter]=useState<'today'|'7d'|'1m'>('7d');
+  const [search,setSearch]=useState('');
+  const now=Date.now();
+  const ms={today:86400000,'7d':604800000,'1m':2592000000};
+  const filtered=logs.filter(l=>(now-l.createdAt)<=ms[filter]&&(
+    !search||l.action.toLowerCase().includes(search.toLowerCase())||l.staffName.toLowerCase().includes(search.toLowerCase())||l.details.toLowerCase().includes(search.toLowerCase())
+  ));
+  const inp3:React.CSSProperties={padding:'0.5rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.82rem',outline:'none',background:'#1e1e2c',color:'#ffffff'};
+  return(
+    <div>
+      <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.875rem',flexWrap:'wrap' as const,alignItems:'center'}}>
+        {[{k:'today',l:'Өнөөдөр'},{k:'7d',l:'7 хоног'},{k:'1m',l:'1 сар'}].map(t=>(
+          <button key={t.k} onClick={()=>setFilter(t.k as any)}
+            style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${filter===t.k?C.yellow:C.border}`,background:filter===t.k?`${C.yellow}22`:'transparent',color:filter===t.k?C.yellow:'rgba(255,255,255,0.5)',fontWeight:filter===t.k?'700':'500',cursor:'pointer',fontSize:'0.8rem'}}>
+            {t.l}
+          </button>
+        ))}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Хайх..." style={{...inp3,flex:1,minWidth:'160px'}}/>
+        <span style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>{filtered.length} бичилт</span>
+      </div>
+      {filtered.length===0&&<div style={{textAlign:'center',padding:'3rem',color:'rgba(255,255,255,0.3)'}}><div style={{fontSize:'3rem'}}>📜</div><p>Лог байхгүй</p></div>}
+      {filtered.map(l=>(
+        <div key={l.id} style={{background:C.card,borderRadius:'10px',padding:'0.75rem 1rem',border:`1px solid ${C.border}`,marginBottom:'0.4rem',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'1rem'}}>
+          <div style={{flex:1,minWidth:0}}>
+            <p style={{color:'rgba(255,255,255,0.88)',fontWeight:'700',margin:'0 0 0.12rem',fontSize:'0.875rem'}}>{l.action}</p>
+            {l.details&&<p style={{color:'rgba(255,255,255,0.48)',margin:0,fontSize:'0.75rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{l.details}</p>}
+          </div>
+          <div style={{textAlign:'right',flexShrink:0}}>
+            <p style={{color:C.yellow,fontSize:'0.75rem',fontWeight:'700',margin:'0 0 0.1rem'}}>{l.staffName}</p>
+            <p style={{color:'rgba(255,255,255,0.32)',fontSize:'0.7rem',margin:0}}>{formatDate(l.createdAt)} {formatTime(l.createdAt)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// DASHBOARD EXPLANATION COMPONENT
+// ════════════════════════════════════════════════════════
+function DashboardExplanation({surveys,dateFilter}:{surveys:Survey[];dateFilter:string}) {
+  const [show,setShow]=useState(false);
+  const total=surveys.length;
+  const promoters=surveys.filter(s=>s.nps>=9).length;
+  const detractors=surveys.filter(s=>s.nps<=6).length;
+  const nps=total?Math.round(((promoters-detractors)/total)*100):0;
+  const csatHigh=surveys.filter(s=>s.csat>=4).length;
+  const csatPct=total?Math.round((csatHigh/total)*100):0;
+
+  const SCORE_LABELS=['','😞 Маш муу','😕 Муу','😐 Дунд','😊 Сайн','🤩 Маш сайн'];
+
+  return(
+    <div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,marginBottom:'1rem',overflow:'hidden'}}>
+      <button onClick={()=>setShow(!show)}
+        style={{width:'100%',padding:'0.875rem 1rem',background:'transparent',border:'none',color:C.text,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.82rem',fontWeight:'700'}}>
+        <span>📖 Аргачлал & Тайлбар</span>
+        <span style={{color:C.muted,fontSize:'0.75rem'}}>{show?'▲ Хаах':'▼ Дэлгэрэнгүй'}</span>
+      </button>
+      {show&&(
+        <div style={{padding:'0 1rem 1rem',display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
+          {/* Star meanings */}
+          <div>
+            <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.5rem'}}>⭐ Одны утга (1-5)</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'0.35rem'}}>
+              {[1,2,3,4,5].map(n=>(
+                <div key={n} style={{background:C.inpBg,borderRadius:'8px',padding:'0.4rem',textAlign:'center' as const,border:`1px solid ${n>=4?C.green+'44':C.border}`}}>
+                  <div style={{fontSize:'1rem',marginBottom:'0.2rem'}}>{'⭐'.repeat(n)}</div>
+                  <div style={{fontSize:'0.65rem',color:n>=4?C.green:C.muted,fontWeight:'600'}}>{SCORE_LABELS[n]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* CSAT */}
+          <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',border:`1px solid rgba(94,234,212,0.2)`}}>
+            <p style={{color:'#5eead4',fontWeight:'800',fontSize:'0.82rem',margin:'0 0 0.4rem'}}>CSAT — Сэтгэл Ханамжийн Индекс</p>
+            <p style={{color:'rgba(255,255,255,0.65)',fontSize:'0.78rem',margin:'0 0 0.35rem',lineHeight:1.5}}>CSAT = (4-5 оноо авсан хариулт) ÷ (нийт хариулт) × 100%</p>
+            <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:'0 0 0.35rem'}}>Таны CSAT: <span style={{color:'#5eead4',fontWeight:'800'}}>{csatPct}%</span> ({csatHigh}/{total} хариулт 4-5 оноо авсан)</p>
+            <p style={{color:'rgba(255,255,255,0.4)',fontSize:'0.72rem',margin:0}}>✅ 70%+ маш сайн · ⚠️ 50-70% хүлцэх · ❌ 50%- сайжруулах шаардлагатай</p>
+          </div>
+          {/* NPS */}
+          <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',border:`1px solid rgba(251,191,36,0.2)`}}>
+            <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.82rem',margin:'0 0 0.4rem'}}>NPS — Нет Промоутерийн Оноо</p>
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.4rem'}}>
+              {[{l:'Промоутер',d:'9-10',c:C.green},{l:'Идэвхгүй',d:'7-8',c:C.muted},{l:'Гомдоллогч',d:'0-6',c:C.red}].map(g=>(
+                <div key={g.l} style={{flex:1,background:'rgba(255,255,255,0.04)',borderRadius:'6px',padding:'0.35rem',textAlign:'center' as const}}>
+                  <p style={{color:g.c,fontSize:'0.68rem',fontWeight:'700',margin:'0 0 0.1rem'}}>{g.l}</p>
+                  <p style={{color:'rgba(255,255,255,0.4)',fontSize:'0.65rem',margin:0}}>оноо: {g.d}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{color:'rgba(255,255,255,0.65)',fontSize:'0.78rem',margin:'0 0 0.3rem',lineHeight:1.5}}>NPS = %Промоутер − %Гомдоллогч (−100 ~ +100)</p>
+            <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:'0 0 0.3rem'}}>Таны NPS: <span style={{color:nps>0?C.green:C.red,fontWeight:'800'}}>{nps>0?'+':''}{nps}</span> ({promoters} промоутер, {detractors} гомдоллогч)</p>
+            <p style={{color:'rgba(255,255,255,0.4)',fontSize:'0.72rem',margin:0}}>🏆 +50 маш сайн · 👍 0-50 сайн · ⚠️ 0-доор сайжруулах</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// CATEGORY TAB - Add/Edit/Delete/Toggle categories
+// ════════════════════════════════════════════════════════
+function CategoryTab({branchId,categories,logAct}:{branchId:string;categories:Category[];logAct:(a:string,d?:string)=>void}) {
+  const [newName,setNewName]=useState('');
+  const [editId,setEditId]=useState<string|null>(null);
+  const [editName,setEditName]=useState('');
+  const [loading,setLoading]=useState(false);
+
+  const add=async()=>{
+    if(!newName.trim())return;
+    setLoading(true);
+    await saveCategory(branchId,newName.trim());
+    logAct('Ангилал нэмлээ',newName);
+    setNewName('');setLoading(false);
+  };
+
+  const saveEdit=async()=>{
+    if(!editId||!editName.trim())return;
+    await updateCategory(branchId,editId,{name:editName.trim()});
+    logAct('Ангилал засагдлаа',editName);
+    setEditId(null);setEditName('');
+  };
+
+  const toggle=async(cat:Category)=>{
+    await updateCategory(branchId,cat.id,{visible:!cat.visible});
+    logAct(`Ангилал ${cat.visible?'нуугдлаа':'харагдах болов'}`,cat.name);
+  };
+
+  const del=async(cat:Category)=>{
+    if(!window.confirm(`"${cat.name}" ангилилыг устгах уу?`))return;
+    await deleteCategory(branchId,cat.id);
+    logAct('Ангилал устгасан',cat.name);
+  };
+
+  const inp2:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box' as const};
+  const card2:React.CSSProperties={background:C.card,borderRadius:'12px',padding:'0.875rem 1rem',border:`1px solid ${C.border}`,marginBottom:'0.5rem',display:'flex',alignItems:'center',gap:'0.75rem'};
+
+  return(
+    <div>
+      {/* Add new */}
+      <div style={{background:C.card,borderRadius:'12px',padding:'1rem',border:`1px solid ${C.border}`,marginBottom:'1rem'}}>
+        <p style={{color:C.yellow,fontSize:'0.78rem',letterSpacing:'0.05em',fontWeight:'700',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>+ ШИНЭ АНГИЛАЛ НЭМЭХ</p>
+        <div style={{display:'flex',gap:'0.5rem'}}>
+          <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Ангилалын нэр (жишээ: Үндсэн хоол)" style={inp2}
+            onKeyDown={e=>e.key==='Enter'&&add()}/>
+          <button onClick={add} disabled={loading||!newName.trim()} style={{padding:'0.65rem 1.25rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',whiteSpace:'nowrap' as const,opacity:!newName.trim()?0.5:1}}>+ Нэмэх</button>
+        </div>
+      </div>
+
+      {categories.length===0&&<div style={{textAlign:'center',padding:'3rem',color:'rgba(255,255,255,0.3)'}}><div style={{fontSize:'3rem'}}>🏷️</div><p>Ангилал байхгүй</p></div>}
+
+      {categories.map(cat=>(
+        <div key={cat.id} style={{...card2,opacity:cat.visible?1:0.55}}>
+          {/* Toggle visible */}
+          <button onClick={()=>toggle(cat)} style={{width:'44px',height:'24px',borderRadius:'12px',border:'none',cursor:'pointer',position:'relative' as const,background:cat.visible?C.green:'rgba(255,255,255,0.15)',transition:'background 0.2s',padding:0,flexShrink:0}}>
+            <span style={{position:'absolute' as const,top:'2px',left:cat.visible?'22px':'2px',width:'20px',height:'20px',borderRadius:'50%',background:'white',transition:'left 0.2s',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}/>
+          </button>
+          {/* Name or edit */}
+          {editId===cat.id
+            ?<input value={editName} onChange={e=>setEditName(e.target.value)} style={{...inp2,flex:1}} onKeyDown={e=>e.key==='Enter'&&saveEdit()} autoFocus/>
+            :<span style={{flex:1,color:cat.visible?C.text:'rgba(255,255,255,0.45)',fontWeight:'700',fontSize:'0.9rem'}}>{cat.name}</span>
+          }
+          <span style={{fontSize:'0.68rem',color:cat.visible?C.green:'rgba(255,255,255,0.3)',fontWeight:'600'}}>{cat.visible?'Харагдаж байна':'Нуугдсан'}</span>
+          {/* Actions */}
+          <div style={{display:'flex',gap:'0.35rem'}}>
+            {editId===cat.id
+              ?<><button onClick={saveEdit} style={{padding:'0.3rem 0.6rem',background:C.green,border:'none',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>✓</button>
+                <button onClick={()=>{setEditId(null);setEditName('');}} style={{padding:'0.3rem 0.5rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>✕</button></>
+              :<><button onClick={()=>{setEditId(cat.id);setEditName(cat.name);}} style={{padding:'0.3rem 0.6rem',background:`${C.yellow}22`,border:`1px solid ${C.yellow}44`,borderRadius:'6px',color:C.yellow,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>✏️</button>
+                <button onClick={()=>del(cat)} style={{padding:'0.3rem 0.5rem',background:`${C.red}22`,border:'none',borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.75rem'}}>🗑</button></>
+            }
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // MENU TAB with category filtering + active/inactive
 // ════════════════════════════════════════════════════════
 function MenuTab({branchId,menuItems,card,onEdit,onDelete,onNew,logActivity}:{
@@ -917,8 +1141,9 @@ function MenuTab({branchId,menuItems,card,onEdit,onDelete,onNew,logActivity}:{
               {!item.available&&<div style={{fontSize:'0.68rem',color:C.red,background:`${C.red}15`,borderRadius:'4px',padding:'0.1rem 0.4rem',display:'inline-block',marginLeft:'0.4rem'}}>Идэвхгүй</div>}
               <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem',flexWrap:'wrap' as const}}>
                 <button onClick={()=>onEdit(item)} style={{flex:1,padding:'0.4rem',border:`1px solid ${C.border}`,borderRadius:'6px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.72rem'}}>✏️ Засах</button>
-                <button onClick={()=>toggleActive(item)} style={{flex:1,padding:'0.4rem',border:`1px solid ${item.available?C.red:C.green}`,borderRadius:'6px',background:'transparent',color:item.available?C.red:C.green,cursor:'pointer',fontWeight:'700',fontSize:'0.72rem'}}>
-                  {item.available?'Хаах':'Нээх'}
+                <button onClick={()=>toggleActive(item)}
+                  style={{width:'44px',height:'24px',borderRadius:'12px',border:'none',cursor:'pointer',position:'relative' as const,background:item.available?C.green:'rgba(255,255,255,0.15)',transition:'background 0.2s',flexShrink:0,padding:0}}>
+                  <span style={{position:'absolute' as const,top:'2px',left:item.available?'22px':'2px',width:'20px',height:'20px',borderRadius:'50%',background:'white',transition:'left 0.2s',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}/>
                 </button>
                 <button onClick={()=>onDelete(item.id||'')} style={{width:'30px',border:'none',borderRadius:'6px',background:`${C.red}22`,color:C.red,cursor:'pointer',fontSize:'0.75rem',display:'flex',alignItems:'center',justifyContent:'center'}}>🗑</button>
               </div>
@@ -1015,7 +1240,7 @@ function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:T
 
   const saveAll=async()=>{
     setLoading(true);
-    await saveSettings(branchId,{qrTopText,qrBottomText,surveyQuestions:questions});
+    await saveSettings(branchId,{qrTopText,qrBottomText,surveyQuestions:questions} as any);
     setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
 
@@ -1028,6 +1253,22 @@ function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:T
 
   return(
     <div>
+      {/* BRAND SETTINGS */}
+      <div style={s2}>
+        <p style={lbl}>🏷️ БРЕНД & РЕСТОРАН ТОХИРГОО</p>
+        <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem'}}>
+          <div>
+            <label style={{...lbl,display:'block',margin:'0 0 0.3rem'}}>Ресторан/салбарын нэр</label>
+            <input value={qrTopText} onChange={e=>setQrTopText(e.target.value)} placeholder="МЕНЮ" style={inp}/>
+            <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.7rem',margin:'0.25rem 0 0'}}>QR хэвлэлт болон системийн гарчигт ашиглагдана</p>
+          </div>
+          <div>
+            <label style={{...lbl,display:'block',margin:'0 0 0.3rem'}}>Лого зураг (URL эсвэл upload)</label>
+            <input placeholder="https://example.com/logo.png" style={inp}/>
+          </div>
+        </div>
+      </div>
+
       {/* TABLE MANAGEMENT */}
       <div style={s2}>
         <p style={lbl}>🪑 ШИРЭЭНИЙ ТООГ ТОХИРУУЛАХ</p>
