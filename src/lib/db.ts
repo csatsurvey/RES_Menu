@@ -60,8 +60,15 @@ export interface Survey {
   id: string;
   tableNumber: number;
   orderId?: string;
-  nps: number;
-  csat: number;
+  // Дэлгэрэнгүй асуултууд (1-5 оноо)
+  foodQuality: number;   // Хоолны амт, чанар
+  service: number;       // Үйлчилгээний чанар
+  staffAttitude: number; // Ажилчдын хандлага
+  ambiance: number;      // Цэвэрлэгээ, орчин
+  priceValue: number;    // Үнэ-чанарын харьцаа
+  // Нэгдсэн дүн
+  csat: number;          // дээрх 5-н дундаж
+  nps: number;           // 0-10
   feedback: string;
   phone?: string;
   resolved: boolean;
@@ -309,8 +316,13 @@ export const createSurvey = async (
   data: {
     tableNumber: number;
     orderId?: string;
-    nps: number;
+    foodQuality: number;
+    service: number;
+    staffAttitude: number;
+    ambiance: number;
+    priceValue: number;
     csat: number;
+    nps: number;
     feedback: string;
     phone?: string;
   }
