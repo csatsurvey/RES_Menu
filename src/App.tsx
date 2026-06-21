@@ -370,15 +370,15 @@ function MenuItemModal({branchId,initial,onClose}:{branchId:string;initial:MenuF
         <div style={{marginBottom:'1rem'}}>
           <label style={lbl}>🖼️ Хоолны зураг</label>
           {preview
-            ?<div style={{position:'relative',borderRadius:'14px',overflow:'hidden',height:'180px',marginBottom:'0.5rem'}}>
+            ?<div style={{position:'relative',borderRadius:'14px',overflow:'hidden',height:'200px',marginBottom:'0.5rem'}}>
                <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                <button onClick={()=>{setPreview('');setForm(f=>({...f,image:''}));}} style={{position:'absolute',top:'8px',right:'8px',background:'rgba(0,0,0,0.6)',border:'none',color:'white',borderRadius:'20px',padding:'0.3rem 0.75rem',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✕ Устгах</button>
              </div>
             :<div onClick={()=>fileRef.current?.click()}
-               style={{height:'130px',border:'2px dashed #E7E5E4',borderRadius:'14px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',background:'#FAFAFA',marginBottom:'0.5rem',gap:'0.5rem'}}
-               onMouseOver={e=>{e.currentTarget.style.borderColor='#FF6B35';}} onMouseOut={e=>{e.currentTarget.style.borderColor='#E7E5E4';}}>
-               <span style={{fontSize:'2.5rem'}}>{uploading?'⏳':'📷'}</span>
-               <span style={{fontSize:'0.82rem',color:'#78716C',fontWeight:'600'}}>{uploading?'Боловсруулж байна...':'Зураг сонгох (tap/click)'}</span>
+               style={{height:'90px',border:'2px dashed #E7E5E4',borderRadius:'14px',display:'flex',flexDirection:'row',alignItems:'center',justifyContent:'center',cursor:'pointer',background:'#FAFAFA',marginBottom:'0.5rem',gap:'0.75rem'}}
+               onMouseOver={e=>{e.currentTarget.style.borderColor='#FF6B35';e.currentTarget.style.background='#FFF7ED';}} onMouseOut={e=>{e.currentTarget.style.borderColor='#E7E5E4';e.currentTarget.style.background='#FAFAFA';}}>
+               <span style={{fontSize:'2rem'}}>{uploading?'⏳':'📷'}</span>
+               <div><p style={{margin:0,fontWeight:'700',color:'#44403C',fontSize:'0.875rem'}}>{uploading?'Боловсруулж байна...':'Зураг оруулах'}</p><p style={{margin:0,fontSize:'0.75rem',color:'#9CA3AF'}}>JPG, PNG · Автоматаар жижигрэнэ</p></div>
              </div>}
           <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
           {!preview&&<button onClick={()=>fileRef.current?.click()} style={{padding:'0.5rem 1rem',border:'1.5px solid #E7E5E4',borderRadius:'10px',background:'transparent',color:'#78716C',cursor:'pointer',fontWeight:'600',fontSize:'0.8rem'}}>📁 Файл сонгох</button>}
