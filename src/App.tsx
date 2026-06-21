@@ -55,7 +55,7 @@ export default function App() {
 
   const logout = ()=>{ setView('landing'); setBranchId(''); setIsManager(false); setStaff(null); };
 
-  if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum} onStaffLogin={()=>setView('admin')}/>;
+  if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
   if(view==='admin') return <AdminPanel branchId={branchId} onLogout={logout} isManager={isManager} staff={staff}/>;
   return <LandingView
     onManager={id=>{ setBranchId(id); setIsManager(true); setView('admin'); }}
@@ -206,7 +206,7 @@ function SurveyModal({ branchId, tableNum, onClose }: { branchId:string; tableNu
 // ════════════════════════════════════════════════════════
 type CartItem = { item:MenuItem; qty:number };
 
-function CustomerView({ branchId, tableNum, onStaffLogin }: { branchId:string; tableNum:number; onStaffLogin:()=>void }) {
+function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number }) {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -256,15 +256,13 @@ function CustomerView({ branchId, tableNum, onStaffLogin }: { branchId:string; t
             style={{background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',padding:'0.45rem 0.875rem',color:C.yellow,cursor:'pointer',fontWeight:'700',fontSize:'0.78rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
             🛒 Захиалгын явц ({cnt})
           </button>
-          <button onClick={onStaffLogin}
-            style={{background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',padding:'0.45rem 0.875rem',color:C.muted,cursor:'pointer',fontWeight:'600',fontSize:'0.78rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
-            🔒 Ажилтан нэвтрэх
-          </button>
+
         </div>
         <span style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.08em'}}>{branchName.toUpperCase()}</span>
       </div>
 
       {/* Category tabs */}
+      <div style={{maxWidth:'760px',margin:'0 auto',width:'100%'}}>
       <div style={{padding:'0.875rem 1rem',display:'flex',gap:'0.5rem',overflowX:'auto',borderBottom:`1px solid ${C.border}`}}>
         {cats.map(cat=>(
           <button key={cat} onClick={()=>setActiveCat(cat)}
@@ -316,6 +314,7 @@ function CustomerView({ branchId, tableNum, onStaffLogin }: { branchId:string; t
         )}
       </div>
 
+      </div>{/*maxWidth*/}
       {/* Bottom bar */}
       <div style={{position:'fixed',bottom:0,left:0,right:0,background:C.sidebar,borderTop:`1px solid ${C.border}`,padding:'0.75rem 1rem',display:'flex',gap:'0.75rem',zIndex:30}}>
         <button onClick={()=>setShowSurvey(true)} style={{flex:1,padding:'0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'12px',color:C.yellow,cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>⭐ Үнэлгээ өгөх</button>
@@ -639,34 +638,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
           </div>
         </>}
 
-        {/* ── ORDERS ── */}
-        {tab==='orders'&&<>
-          {!orders.length&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>📋</div><p>Захиалга байхгүй</p></div>}
-          {orders.filter(o=>o.status!=='served').map(o=>(
-            <div key={o.id} style={{...card,borderLeft:`3px solid ${ORDER_STATUS_COLORS[o.status]}`}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.5rem'}}>
-                <span style={{fontWeight:'800',color:C.text,fontSize:'1.1rem'}}>Ширээ {o.tableNumber}</span>
-                <span style={{fontSize:'0.75rem',padding:'0.25rem 0.65rem',borderRadius:'20px',fontWeight:'700',background:ORDER_STATUS_COLORS[o.status]+'22',color:ORDER_STATUS_COLORS[o.status]}}>{ORDER_STATUS_LABELS[o.status]}</span>
-              </div>
-              {o.items.map((it,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'0.875rem',color:C.muted,padding:'0.2rem 0'}}><span>{it.name} × {it.quantity}</span><span>{formatPrice(it.price*it.quantity)}</span></div>)}
-              {o.notes&&<p style={{margin:'0.5rem 0 0',fontSize:'0.8rem',color:C.yellow,background:`${C.yellow}11`,padding:'0.4rem 0.6rem',borderRadius:'6px'}}>📝 {o.notes}</p>}
-              <div style={{display:'flex',justifyContent:'space-between',marginTop:'0.5rem',paddingTop:'0.5rem',borderTop:`1px solid ${C.border}`}}>
-                <span style={{fontSize:'0.75rem',color:C.muted}}>{formatTime(o.createdAt)}</span>
-                <span style={{fontWeight:'800',color:C.yellow}}>{formatPrice(o.totalAmount)}</span>
-              </div>
-              {o.status!=='served'&&(
-                <div style={{display:'flex',gap:'0.5rem',marginTop:'0.75rem'}}>
-                  {(['pending','preparing','ready'] as const).map(st=>{
-                    const NEXT:{[k:string]:Order['status']}={pending:'preparing',preparing:'ready',ready:'served'};
-                    const LABEL:{[k:string]:string}={pending:'👨‍🍳 Бэлтгэх',preparing:'✅ Бэлэн',ready:'🛎️ Хүргэх'};
-                    if(o.status!==st) return null;
-                    return<button key={st} onClick={()=>updateOrderStatus(branchId,o.id,NEXT[st])} style={{flex:1,padding:'0.6rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem'}}>{LABEL[st]}</button>;
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </>}
+        {/* ── ORDERS (Kitchen view with tabs) ── */}
+        {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
       </div>
 
       </div>{/* /maxWidth wrapper */}
@@ -699,6 +672,93 @@ const CQ = [
   {k:'priceValue',    l:'Хоолны үнэ өртөг чанартаа нийцэж байна уу?:'},
   {k:'service',       l:'Нийт сэтгэл ханамж хэр байна?:'},
 ];
+
+// ════════════════════════════════════════════════════════
+// ORDERS KITCHEN VIEW (shared for manager, chef, waiter)
+// ════════════════════════════════════════════════════════
+type KitchenFilter = 'all'|'pending'|'preparing'|'ready';
+
+function OrderCard({o,branchId}:{o:Order;branchId:string}) {
+  const NEXT:Partial<Record<Order['status'],Order['status']>>={pending:'preparing',preparing:'ready',ready:'served'};
+  const NEXT_LABEL:Partial<Record<Order['status'],string>>={pending:'👨‍🍳 Бэлтгэж эхлэх',preparing:'✅ Бэлэн боллоо',ready:'🛎️ Хүргэгдсэн'};
+  const NEXT_COLOR:Partial<Record<Order['status'],string>>={pending:'#3B82F6',preparing:'#10B981',ready:'#8B5CF6'};
+  const elapsed = Math.floor((Date.now()-o.createdAt)/60000);
+  return(
+    <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
+      <div style={{padding:'0.875rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:'0.5rem'}}>
+          <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:'0.72rem',padding:'0.25rem 0.65rem',borderRadius:'20px',fontWeight:'700',background:ORDER_STATUS_COLORS[o.status]+'22',color:ORDER_STATUS_COLORS[o.status],marginBottom:'0.2rem'}}>{ORDER_STATUS_LABELS[o.status]}</div>
+          <div style={{fontSize:'0.72rem',color:elapsed>=15?C.red:elapsed>=5?C.yellow:C.muted,fontWeight:'600'}}>
+            {formatTime(o.createdAt)} · {elapsed}мин өмнө
+          </div>
+        </div>
+      </div>
+      <div style={{padding:'0.875rem 1rem'}}>
+        {o.items.map((item,i)=>(
+          <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.35rem 0',borderBottom:i<o.items.length-1?`1px dashed rgba(255,255,255,0.05)`:'none'}}>
+            <span style={{fontWeight:'700',color:'rgba(255,255,255,0.9)',fontSize:'0.95rem'}}>{item.name}</span>
+            <span style={{background:'rgba(255,255,255,0.1)',borderRadius:'20px',padding:'0.15rem 0.65rem',fontWeight:'800',color:C.text,fontSize:'0.85rem'}}>×{item.quantity}</span>
+          </div>
+        ))}
+        {o.notes&&<div style={{marginTop:'0.6rem',background:`${C.yellow}11`,border:`1px solid ${C.yellow}33`,borderRadius:'8px',padding:'0.4rem 0.65rem'}}>
+          <p style={{margin:0,fontSize:'0.82rem',color:C.yellow,fontWeight:'600'}}>📝 {o.notes}</p>
+        </div>}
+        {o.customerPhone&&<p style={{margin:'0.4rem 0 0',fontSize:'0.75rem',color:'rgba(255,255,255,0.4)'}}>☎ {o.customerPhone}</p>}
+      </div>
+      {NEXT[o.status]&&(
+        <div style={{padding:'0 1rem 1rem'}}>
+          <button onClick={()=>updateOrderStatus(branchId,o.id,NEXT[o.status]!)}
+            style={{width:'100%',padding:'0.8rem',background:NEXT_COLOR[o.status],color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem'}}>
+            {NEXT_LABEL[o.status]}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
+  const [filter,setFilter]=useState<KitchenFilter>('all');
+  const active=orders.filter(o=>o.status!=='served').sort((a,b)=>a.createdAt-b.createdAt);
+  const counts={
+    all:active.length,
+    pending:active.filter(o=>o.status==='pending').length,
+    preparing:active.filter(o=>o.status==='preparing').length,
+    ready:active.filter(o=>o.status==='ready').length,
+  };
+  const filtered=filter==='all'?active:active.filter(o=>o.status===filter);
+
+  const TABS:{id:KitchenFilter;label:string;color:string}[]=[
+    {id:'all',label:`📋 Бүгд (${counts.all})`,color:C.yellow},
+    {id:'pending',label:`🟡 Хүлээгдэж байна (${counts.pending})`,color:'#F59E0B'},
+    {id:'preparing',label:`🔵 Бэлтгэж байна (${counts.preparing})`,color:'#3B82F6'},
+    {id:'ready',label:`🟢 Бэлэн болсон (${counts.ready})`,color:'#10B981'},
+  ];
+
+  return(
+    <div>
+      {/* Status tabs */}
+      <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap'}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setFilter(t.id)}
+            style={{padding:'0.5rem 1rem',borderRadius:'20px',border:`1px solid ${filter===t.id?t.color:C.border}`,background:filter===t.id?`${t.color}22`:'transparent',color:filter===t.id?t.color:'rgba(255,255,255,0.55)',fontWeight:filter===t.id?'700':'500',cursor:'pointer',fontSize:'0.82rem',whiteSpace:'nowrap' as const}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {filtered.length===0&&(
+        <div style={{textAlign:'center',padding:'4rem 2rem',color:'rgba(255,255,255,0.35)'}}>
+          <div style={{fontSize:'3.5rem',marginBottom:'0.75rem'}}>🎉</div>
+          <p style={{fontWeight:'700',fontSize:'1rem',margin:0}}>Захиалга байхгүй</p>
+        </div>
+      )}
+      {filtered.map(o=><OrderCard key={o.id} o={o} branchId={branchId}/>)}
+    </div>
+  );
+}
 
 function SurveyCard({s,showActions,note,onNoteChange,onResolve,onUnresolve}:{s:Survey;showActions:boolean;note:string;onNoteChange:(v:string)=>void;onResolve:()=>void;onUnresolve:()=>void}) {
   return(
