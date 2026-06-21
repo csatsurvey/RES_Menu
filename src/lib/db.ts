@@ -552,24 +552,68 @@ export const subscribeToCategories = (
 };
 
 // ── Sales Report ──────────────────────────────────────────────
+export interface ProductStat {
+  name: string;
+  revenue: number;
+  units: number;
+}
+export interface DayStat {
+  date: string;
+  revenue: number;
+  orders: number;
+}
+export interface SalesReportData {
+  totalRevenue: number;
+  orderCount: number;
+  avgOrder: number;
+  topProducts: ProductStat[];
+  byDate: DayStat[];
+}
+
 export const getSalesReport = async (
   branchId: string,
-  fromMs: number
-): Promise<{ totalRevenue: number; orderCount: number; avgOrder: number; byCategory: Record<string, number> }> => {
+  fromMs: number,
+  toMs = Date.now()
+): Promise<SalesReportData> => {
   const snap = await get(ref(db, `branches/${branchId}/orders`));
-  if (!snap.exists()) return { totalRevenue: 0, orderCount: 0, avgOrder: 0, byCategory: {} };
+  const empty: SalesReportData = { totalRevenue:0, orderCount:0, avgOrder:0, topProducts:[], byDate:[] };
+  if (!snap.exists()) return empty;
+
   const orders: Order[] = Object.values(snap.val()).filter(
-    (o: any) => o.createdAt >= fromMs && o.status === 'served'
+    (o: any) => o.createdAt >= fromMs && o.createdAt <= toMs && o.status === 'served'
   ) as Order[];
+
   const totalRevenue = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
-  const byCategory: Record<string, number> = {};
+
+  // By product
+  const pm: Record<string, { revenue: number; units: number }> = {};
   orders.forEach(o => o.items?.forEach(item => {
-    byCategory[item.name] = (byCategory[item.name] || 0) + item.price * item.quantity;
+    if (!pm[item.name]) pm[item.name] = { revenue: 0, units: 0 };
+    pm[item.name].revenue += item.price * item.quantity;
+    pm[item.name].units += item.quantity;
   }));
+  const topProducts = Object.entries(pm)
+    .map(([name, d]) => ({ name, ...d }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // By date
+  const dm: Record<string, { revenue: number; orders: number }> = {};
+  orders.forEach(o => {
+    const d = new Date(o.createdAt);
+    const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (!dm[date]) dm[date] = { revenue: 0, orders: 0 };
+    dm[date].revenue += o.totalAmount || 0;
+    dm[date].orders += 1;
+  });
+  const byDate = Object.entries(dm)
+    .map(([date, d]) => ({ date, ...d }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   return {
     totalRevenue,
     orderCount: orders.length,
     avgOrder: orders.length ? Math.round(totalRevenue / orders.length) : 0,
-    byCategory,
+    topProducts,
+    byDate,
   };
 };
