@@ -378,3 +378,46 @@ export const ORDER_STATUS_COLORS: Record<Order['status'], string> = {
   served: '#6B7280',
 };
 
+// ── Menu item CRUD (complete) ────────────────────────
+export const saveMenuItem = async (
+  branchId: string,
+  item: Omit<MenuItem, 'id'>,
+  itemId?: string
+): Promise<string> => {
+  if (itemId) {
+    await update(ref(db, `branches/${branchId}/menu/${itemId}`), item);
+    return itemId;
+  }
+  const r = push(ref(db, `branches/${branchId}/menu`));
+  await set(r, item);
+  return r.key!;
+};
+
+export const deleteMenuItem = async (
+  branchId: string,
+  itemId: string
+): Promise<void> => {
+  await remove(ref(db, `branches/${branchId}/menu/${itemId}`));
+};
+
+// ── Image compress to base64 (browser-side) ─────────
+export const compressImage = (
+  file: File,
+  maxWidth = 700,
+  quality = 0.78
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
