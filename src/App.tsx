@@ -6,7 +6,9 @@ import {
   subscribeToOrders, subscribeToTableOrders, createOrder, updateOrderStatus,
   subscribeToSurveys, createSurvey, setSurveyResolved,
   subscribeToMenu, saveMenuItem, deleteMenuItem, compressImage,
-  getStaff, addStaff, removeStaff,
+  getStaff, addStaff, removeStaff, updateStaff,
+  getSettings, saveSettings, subscribeToSettings, BranchSettings,
+  logActivity, subscribeToLogs, ActivityLog,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
@@ -64,6 +66,45 @@ export default function App() {
 }
 
 // ════════════════════════════════════════════════════════
+// CUSTOM SELECT (replaces native select - dark, always visible)
+// ════════════════════════════════════════════════════════
+function CustomSelect({value,onChange,options,placeholder,style}:{
+  value:string; onChange:(v:string)=>void;
+  options:{value:string;label:string}[];
+  placeholder:string; style?:React.CSSProperties;
+}) {
+  const [open,setOpen]=useState(false);
+  const ref=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const h=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const selected=options.find(o=>o.value===value);
+  return(
+    <div ref={ref} style={{position:'relative',...style}}>
+      <div onClick={()=>setOpen(!open)}
+        style={{padding:'0.65rem 0.875rem',background:'#1e1e2c',border:`1px solid ${open?C.yellow:C.border}`,borderRadius:'8px',cursor:'pointer',color:value?'#fff':'rgba(255,255,255,0.4)',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.9rem',userSelect:'none' as const,transition:'border-color 0.15s'}}>
+        <span>{selected?selected.label:placeholder}</span>
+        <span style={{color:C.muted,fontSize:'0.7rem',transition:'transform 0.2s',display:'inline-block',transform:open?'rotate(180deg)':'none'}}>▼</span>
+      </div>
+      {open&&(
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#1e1e2c',border:`1px solid ${C.yellow}44`,borderRadius:'8px',zIndex:9999,overflow:'hidden',boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}>
+          {options.map(opt=>(
+            <div key={opt.value} onClick={()=>{onChange(opt.value);setOpen(false);}}
+              style={{padding:'0.65rem 0.875rem',cursor:'pointer',color:opt.value===value?C.yellow:'rgba(255,255,255,0.85)',background:opt.value===value?`${C.yellow}18`:'transparent',fontSize:'0.9rem',borderBottom:`1px solid rgba(255,255,255,0.04)`}}
+              onMouseOver={e=>{if(opt.value!==value)e.currentTarget.style.background='rgba(255,255,255,0.06)';}}
+              onMouseOut={e=>{e.currentTarget.style.background=opt.value===value?`${C.yellow}18`:'transparent';}}>
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // LANDING
 // ════════════════════════════════════════════════════════
 function LandingView({ onManager, onStaff }: { onManager:(id:string)=>void; onStaff:(id:string,s:Staff)=>void }) {
@@ -111,7 +152,7 @@ function LandingView({ onManager, onStaff }: { onManager:(id:string)=>void; onSt
           <div style={{background:`${mode==='manager'?C.orange:'#1a5c3a'}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>
             {mode==='manager'?'👔 Менежер нэвтрэх':'👨‍🍳 Ажилтан нэвтрэх'}
           </div>
-          <select value={branchId} onChange={e=>setBranchId(e.target.value)} style={{...inp}}><option value="">Салбар сонгоно уу</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          <CustomSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
           <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} placeholder="PIN оруулна уу" onKeyDown={e=>e.key==='Enter'&&login(mode)} style={inp}/>
           {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
           <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтрэж байна...':'Нэвтрэх'}</button>
@@ -141,13 +182,19 @@ function SurveyModal({ branchId, tableNum, onClose }: { branchId:string; tableNu
   const [loading, setLoading] = useState(false);
   const allStars = s.foodQuality&&s.ambiance&&s.staffAttitude&&s.priceValue&&s.service;
 
+  const [success,setSuccess]=useState(false);
   const submit = async()=>{
     if(!allStars||!s.nps) return;
     setLoading(true);
-    const csat = Math.round((s.foodQuality+s.ambiance+s.staffAttitude+s.priceValue+s.service)/5);
-    await createSurvey(branchId,{ tableNumber:tableNum, foodQuality:s.foodQuality, ambiance:s.ambiance, staffAttitude:s.staffAttitude, priceValue:s.priceValue, service:s.service, csat, nps:s.nps, feedback:s.feedback, phone:s.phone||undefined });
-    setLoading(false);
-    onClose();
+    try{
+      const csat=Math.round((s.foodQuality+s.ambiance+s.staffAttitude+s.priceValue+s.service)/5);
+      await createSurvey(branchId,{tableNumber:tableNum,foodQuality:s.foodQuality,ambiance:s.ambiance,staffAttitude:s.staffAttitude,priceValue:s.priceValue,service:s.service,csat,nps:s.nps,feedback:s.feedback,phone:s.phone||undefined});
+      setSuccess(true);
+      setTimeout(()=>{setLoading(false);onClose();},1800);
+    }catch(e){
+      console.error(e);
+      setLoading(false);
+    }
   };
 
   const StarRow = ({ qKey, label }: { qKey: keyof SurveyData; label: string }) => (
@@ -377,7 +424,7 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
 // ════════════════════════════════════════════════════════
 // ADMIN PANEL
 // ════════════════════════════════════════════════════════
-type AdminTab = 'dashboard'|'complaints'|'menu'|'staff'|'tables'|'orders'|'settings';
+type AdminTab = 'dashboard'|'complaints'|'menu'|'staff'|'tables'|'orders'|'settings'|'logs';
 
 function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string; onLogout:()=>void; isManager:boolean; staff:Staff|null }) {
   const [tab, setTab] = useState<AdminTab>(isManager?'dashboard':'orders');
@@ -395,6 +442,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const [newStaffRole, setNewStaffRole] = useState<'chef'|'waiter'>('chef');
   const [newStaffPin, setNewStaffPin] = useState('');
   const [showQR, setShowQR] = useState<number|null>(null);
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [resolveNote, setResolveNote] = useState<Record<string,string>>({});
   const pendingOrders = orders.filter(o=>o.status==='pending').length;
 
@@ -405,7 +453,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
     const u2=subscribeToOrders(branchId,setOrders);
     const u3=subscribeToMenu(branchId,setMenuItems);
     const u4=subscribeToTables(branchId,t=>{setTablesState(t);setTableCount(String(t.length||5));});
-    return()=>{u1();u2();u3();u4();};
+    const u5=subscribeToLogs(branchId,setLogs);
+    return()=>{u1();u2();u3();u4();u5();};
   },[branchId]);
 
   // Filter surveys by date
@@ -436,6 +485,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
     {id:'staff',label:'Ажилтан & ПИН шинэчлэх',icon:'👤'},
     {id:'orders',label:`Ширээний захиалгууд (${pendingOrders})`,icon:'📋'},
     {id:'settings' as AdminTab,label:'Тохиргоо & QR',icon:'⚙️'},
+    {id:'logs' as AdminTab,label:'Үйл ажиллагааны лог',icon:'📜'},
   ];
 
   const card:React.CSSProperties={background:C.card,borderRadius:'14px',padding:'1.25rem',border:`1px solid ${C.border}`,marginBottom:'0.75rem'};
@@ -628,18 +678,32 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
                 {tables.map(t=><option key={t.id} value={t.number}>Ширээ {String(t.number).padStart(2,'0')}</option>)}
               </select>
               {showQR&&<>
-                <button onClick={()=>{const w=window.open('','_blank');if(w){w.document.write(`<html><body style="text-align:center;font-family:sans-serif;padding:30px;background:#0d0d12;color:white"><h2 style="color:#F5C120">${branchName} — Ширээ ${showQR}</h2><img src="${buildQR(branchId,showQR)}" style="width:220px"><br><p style="font-size:11px;color:#999">${buildLink(branchId,showQR)}</p><script>window.print()<\/script></body></html>`);w.document.close();}}}
+                <button onClick={()=>{const w=window.open('','_blank');if(w){w.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>QR — Ширээ ${showQR}</title><style>@page{margin:0}body{margin:0;padding:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.top{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.sub{font-size:0.75rem;color:#888;margin-bottom:16px}.qr img{width:200px;height:200px}.name{font-size:1rem;font-weight:700;color:#222;margin:12px 0 4px}.table{font-size:0.85rem;color:#555;margin-bottom:12px}.divider{border:none;border-top:1px solid #eee;margin:12px 0}.survey{font-size:0.78rem;color:#666;line-height:1.5}</style></head><body><div class='card'><div class='top'>МЕНЮ</div><div class='sub'>QR код скан хийж захиалгаа өгнө үү</div><div class='qr'><img src='${buildQR(branchId,showQR)}'/></div><div class='name'>${branchName}</div><div class='table'>Ширээ ${showQR}</div><hr class='divider'/><div class='survey'>⭐ Хоол идсэний дараа сэтгэл ханамжийн<br/>судалгаа бөглөх боломжтой</div></div><script>window.onload=function(){window.print()}<\/script></body></html>`);w.document.close();}}}
                   style={{padding:'0.6rem 1.25rem',background:C.orange,border:'none',borderRadius:'10px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
                   🖨️ ШИРЭЭНИЙ ПОСТЕР QR ХЭВЛЭХ
                 </button>
                 <img src={buildQR(branchId,showQR)} alt="" style={{width:'80px',borderRadius:'8px'}}/>
               </>}
-            </div>
-          </div>
         </>}
 
         {/* ── ORDERS (Kitchen view with tabs) ── */}
         {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
+        {tab==='logs'&&<>
+          <p style={{color:C.muted,fontSize:'0.8rem',margin:'0 0 1rem'}}>Сүүлийн 150 үйл ажиллагаа</p>
+          {!logs.length&&<div style={{textAlign:'center',padding:'3rem',color:'rgba(255,255,255,0.3)'}}><div style={{fontSize:'3rem'}}>📜</div><p>Лог байхгүй</p></div>}
+          {logs.map(l=>(
+            <div key={l.id} style={{background:C.card,borderRadius:'10px',padding:'0.75rem 1rem',border:`1px solid ${C.border}`,marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'1rem'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{color:'rgba(255,255,255,0.85)',fontWeight:'700',margin:'0 0 0.15rem',fontSize:'0.875rem'}}>{l.action}</p>
+                {l.details&&<p style={{color:'rgba(255,255,255,0.5)',margin:0,fontSize:'0.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{l.details}</p>}
+              </div>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                <p style={{color:C.yellow,fontSize:'0.78rem',fontWeight:'600',margin:'0 0 0.1rem'}}>{l.staffName}</p>
+                <p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.72rem',margin:0}}>{formatDate(l.createdAt)} {formatTime(l.createdAt)}</p>
+              </div>
+            </div>
+          ))}
+        </>}
       </div>
 
       </div>{/* /maxWidth wrapper */}
@@ -654,7 +718,14 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
           <p style={{color:C.muted,fontSize:'0.875rem',margin:'0 0 1.25rem'}}>Энэ үйлдлийг буцаах боломжгүй.</p>
           <div style={{display:'flex',gap:'0.75rem'}}>
             <button onClick={()=>setDeleteTarget(null)} style={{flex:1,padding:'0.75rem',border:`1px solid ${C.border}`,borderRadius:'10px',background:'transparent',color:C.muted,fontWeight:'700',cursor:'pointer'}}>Болих</button>
-            <button onClick={async()=>{if(deleteTarget)await deleteMenuItem(branchId,deleteTarget);setDeleteTarget(null);}} style={{flex:1,padding:'0.75rem',background:C.red,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer'}}>Устгах</button>
+            <button onClick={async()=>{
+              if(deleteTarget){
+                const item=menuItems.find(i=>i.id===deleteTarget);
+                await deleteMenuItem(branchId,deleteTarget);
+                await logActivity(branchId,'Менежер','Хоол устгагдлаа',item?.name||deleteTarget);
+              }
+              setDeleteTarget(null);
+            }} style={{flex:1,padding:'0.75rem',background:C.red,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer'}}>Устгах</button>
           </div>
         </div>
       </div>}
@@ -710,7 +781,7 @@ function OrderCard({o,branchId}:{o:Order;branchId:string}) {
       </div>
       {NEXT[o.status]&&(
         <div style={{padding:'0 1rem 1rem'}}>
-          <button onClick={()=>updateOrderStatus(branchId,o.id,NEXT[o.status]!)}
+          <button onClick={async()=>{await updateOrderStatus(branchId,o.id,NEXT[o.status]!);await logActivity(branchId,'Ажилтан',`Захиалгын төлөв өөрчлөгдлөө`,`Ширээ ${o.tableNumber}: ${NEXT_LABEL[o.status]}`);}}
             style={{width:'100%',padding:'0.8rem',background:NEXT_COLOR[o.status],color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem'}}>
             {NEXT_LABEL[o.status]}
           </button>
@@ -841,6 +912,137 @@ function ComplaintTabs({ branchId, pending, resolved, anonymous, onResolve, onUn
 }
 
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// SETTINGS TAB
+// ════════════════════════════════════════════════════════
+function SettingsTab({branchId,tables,onSetTables,logs,inp}:{branchId:string;tables:Table[];onSetTables:(id:string,n:number)=>Promise<void>;logs:ActivityLog[];inp:React.CSSProperties}) {
+  const [tableCount,setTableCount]=useState(String(tables.length||5));
+  const [qrTopText,setQrTopText]=useState('МЕНЮ');
+  const [qrBottomText,setQrBottomText]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
+  const [questions,setQuestions]=useState<string[]>([]);
+  const [editQ,setEditQ]=useState<{idx:number;val:string}|null>(null);
+  const [newQ,setNewQ]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [saved,setSaved]=useState(false);
+
+  useEffect(()=>{
+    getSettings(branchId).then(s=>{
+      if(s.qrTopText)setQrTopText(s.qrTopText);
+      if(s.qrBottomText)setQrBottomText(s.qrBottomText);
+      if(s.surveyQuestions)setQuestions(s.surveyQuestions);
+      else setQuestions(['Хоолны амт, чанар хэр байсан бэ?','Рестораны орчин тойрон, цэвэр байдал','Үйлчилгээний ажилтан, зөөгчийн харилцаа хандлага','Хоолны үнэ өртөг чанартаа нийцэж байна уу?','Нийт сэтгэл ханамж хэр байна?']);
+    });
+    subscribeToTables(branchId,()=>{});
+  },[branchId]);
+
+  useEffect(()=>{setTableCount(String(tables.length||5));},[tables.length]);
+
+  const saveAll=async()=>{
+    setLoading(true);
+    await saveSettings(branchId,{qrTopText,qrBottomText,surveyQuestions:questions});
+    setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
+  };
+
+  const buildQR=(bId:string,t:number)=>`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}?b=${bId}&t=${t}`)}`;
+  const buildLink=(bId:string,t:number)=>`${window.location.origin}${window.location.pathname}?b=${bId}&t=${t}`;
+  const [showQR,setShowQR]=useState<number|null>(null);
+
+  const s2={background:C.card,borderRadius:'14px',padding:'1.25rem',border:`1px solid ${C.border}`,marginBottom:'0.75rem'};
+  const lbl:React.CSSProperties={color:'rgba(255,255,255,0.45)',fontSize:'0.7rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'};
+
+  return(
+    <div>
+      {/* TABLE MANAGEMENT */}
+      <div style={s2}>
+        <p style={lbl}>🪑 ШИРЭЭНИЙ ТООГ ТОХИРУУЛАХ</p>
+        <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.875rem'}}>
+          <input type="number" value={tableCount} onChange={e=>setTableCount(e.target.value)} min="1" max="200" style={{...inp,flex:1,width:'auto'}}/>
+          <button onClick={async()=>{const n=parseInt(tableCount);if(!n)return;await onSetTables(branchId,n);logActivity(branchId,'Системийн тохиргоо',`Ширээний тоо ${n} болгон өөрчиллоо`);}}
+            style={{padding:'0.65rem 1.25rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.875rem'}}>Хадгалах</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:'0.5rem'}}>
+          {tables.map(t=>(
+            <div key={t.id} style={{background:C.inpBg,borderRadius:'8px',padding:'0.5rem 0.75rem',border:`1px solid ${t.status==='occupied'?'rgba(239,68,68,0.4)':'rgba(46,204,113,0.3)'}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{color:'rgba(255,255,255,0.8)',fontSize:'0.82rem',fontWeight:'700'}}>Ширээ {t.number}</span>
+              <span style={{fontSize:'0.65rem',color:t.status==='occupied'?C.red:C.green,fontWeight:'700'}}>{t.status==='occupied'?'•':'○'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* QR PRINTING */}
+      <div style={s2}>
+        <p style={lbl}>📱 QR ХЭВЛЭЛТ ТОХИРГОО</p>
+        <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem',marginBottom:'0.875rem'}}>
+          <div>
+            <label style={{...lbl,margin:'0 0 0.3rem',display:'block'}}>Дээд хэсгийн текст</label>
+            <input value={qrTopText} onChange={e=>setQrTopText(e.target.value)} style={inp} placeholder="МЕНЮ"/>
+          </div>
+          <div>
+            <label style={{...lbl,margin:'0 0 0.3rem',display:'block'}}>Доод хэсгийн текст</label>
+            <textarea value={qrBottomText} onChange={e=>setQrBottomText(e.target.value)} rows={2} style={{...inp,resize:'none' as const}}/>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:'0.75rem',alignItems:'center',flexWrap:'wrap' as const}}>
+          <CustomSelect value={String(showQR||'')} onChange={v=>setShowQR(Number(v)||null)} placeholder="Ширээ сонгох" options={tables.map(t=>({value:String(t.number),label:`Ширээ ${t.number}`}))} style={{width:'160px'}}/>
+          {showQR&&<>
+            <button onClick={()=>{
+              const w=window.open('','_blank');
+              if(w){
+                w.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.top{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.sub{font-size:0.75rem;color:#888;margin-bottom:16px}.name{font-size:1rem;font-weight:700;color:#222;margin:12px 0 4px}.table{font-size:0.85rem;color:#555;margin-bottom:12px}.divider{border:none;border-top:1px solid #eee;margin:12px 0}.survey{font-size:0.78rem;color:#666;line-height:1.5}</style></head><body><div class='card'><div class='top'>${qrTopText}</div><div class='sub'>QR код скан хийж захиалгаа өгнө үү</div><img src='${buildQR(branchId,showQR)}' style='width:200px'/><div class='name'></div><div class='table'>Ширээ ${showQR}</div><hr class='divider'/><div class='survey'>${qrBottomText}</div></div><script>window.onload=function(){window.print()}<\/script></body></html>`);
+                w.document.close();
+              }
+            }}
+            style={{padding:'0.6rem 1.25rem',background:C.orange,border:'none',borderRadius:'10px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.4rem'}}>
+              🖨️ QR ХЭВЛЭХ
+            </button>
+            <img src={buildQR(branchId,showQR)} alt="" style={{width:'70px',borderRadius:'8px'}}/>
+          </>}
+        </div>
+      </div>
+
+      {/* SURVEY QUESTIONS */}
+      <div style={s2}>
+        <p style={lbl}>⭐ СУДАЛГААНЫ АСУУЛТУУД (засах боломжтой)</p>
+        <div style={{marginBottom:'0.75rem'}}>
+          {questions.map((q,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.4rem'}}>
+              <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.75rem',width:'18px',flexShrink:0}}>{i+1}.</span>
+              {editQ?.idx===i
+                ?<>
+                   <input value={editQ.val} onChange={e=>setEditQ({idx:i,val:e.target.value})} style={{...inp,flex:1,padding:'0.4rem 0.65rem',fontSize:'0.82rem'}} autoFocus/>
+                   <button onClick={()=>{const q=[...questions];q[i]=editQ.val;setQuestions(q);setEditQ(null);}} style={{padding:'0.4rem 0.75rem',background:C.green,border:'none',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>✓</button>
+                   <button onClick={()=>setEditQ(null)} style={{padding:'0.4rem 0.5rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>✕</button>
+                 </>
+                :<>
+                   <div style={{flex:1,padding:'0.4rem 0.75rem',background:'rgba(255,255,255,0.04)',borderRadius:'8px',border:`1px solid ${C.border}`}}>
+                     <span style={{color:'rgba(255,255,255,0.85)',fontSize:'0.82rem'}}>{q}</span>
+                   </div>
+                   <button onClick={()=>setEditQ({idx:i,val:q})} style={{padding:'0.35rem 0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>✏️</button>
+                   <button onClick={()=>setQuestions(questions.filter((_,j)=>j!==i))} style={{padding:'0.35rem 0.5rem',background:`${C.red}22`,border:'none',borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.75rem'}}>🗑</button>
+                 </>
+              }
+            </div>
+          ))}
+          <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.72rem',margin:'0.35rem 0 0'}}>+ NPS: Найз нөхөддөө санал болгох магадлал (0-10) — тогтмол</p>
+        </div>
+        <div style={{display:'flex',gap:'0.5rem'}}>
+          <input value={newQ} onChange={e=>setNewQ(e.target.value)} placeholder="Шинэ асуулт нэмэх..." style={{...inp,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}
+            onKeyDown={e=>{if(e.key==='Enter'&&newQ.trim()){setQuestions([...questions,newQ.trim()]);setNewQ('');}}}/>
+          <button onClick={()=>{if(newQ.trim()){setQuestions([...questions,newQ.trim()]);setNewQ('');}}}
+            style={{padding:'0.5rem 0.875rem',background:C.orange,border:'none',borderRadius:'8px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem'}}>+</button>
+        </div>
+      </div>
+
+      {/* Save button */}
+      <button onClick={saveAll} disabled={loading}
+        style={{width:'100%',padding:'0.875rem',background:saved?C.green:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',transition:'background 0.2s'}}>
+        {loading?'Хадгалж байна...':saved?'✅ Хадгалагдлаа!':'💾 Бүгдийг хадгалах'}
+      </button>
+    </div>
+  );
+}
+
 function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initial:any; onClose:()=>void }) {
   const [form, setForm] = useState(initial);
   const [preview, setPreview] = useState(initial.image||'');
@@ -861,6 +1063,7 @@ function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initia
     setUploading(true);
     try{
       await saveMenuItem(branchId,{name:form.name.trim(),category:form.category.trim(),price:Number(form.price),description:form.description||'',allergens:form.allergens||'',image:form.image||'',available:form.available!==false},form.id);
+      await logActivity(branchId,'Менежер',form.id?'Хоол засагдлаа':'Шинэ хоол нэмэгдлэв',`${form.name} — ₮${form.price}`);
       onClose();
     }catch{ setError('Хадгалахад алдаа гарлаа'); setUploading(false); }
   };
