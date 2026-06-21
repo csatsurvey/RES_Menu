@@ -638,7 +638,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
               <input value={newStaffName} onChange={e=>setNewStaffName(e.target.value)} placeholder="Нэр" style={inp}/>
               <select value={newStaffRole} onChange={e=>setNewStaffRole(e.target.value as any)} style={{...inp}}><option value="chef">👨‍🍳 Тогооч</option><option value="waiter">🛎️ Зөөгч</option></select>
               <input value={newStaffPin} onChange={e=>setNewStaffPin(e.target.value)} type="password" placeholder="PIN" style={inp}/>
-              <button onClick={async()=>{if(!newStaffName||!newStaffPin)return;await addStaff(branchId,newStaffName,newStaffRole as 'chef'|'waiter',newStaffPin);getStaff(branchId).then(setStaffList);setNewStaffName('');setNewStaffPin('');}}
+              <button onClick={async()=>{if(!newStaffName||!newStaffPin)return;await addStaff(branchId,newStaffName,newStaffRole,newStaffPin);getStaff(branchId).then(setStaffList);setNewStaffName('');setNewStaffPin('');}}
                 style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
             </div>
           </div>
@@ -660,7 +660,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
         {tab==='sales'&&<SalesReportTab branchId={branchId}/> }
         {tab==='categories'&&<CategoryTab branchId={branchId} categories={categories} menuItems={menuItems} logAct={(a,d)=>logActivity(branchId,'Менежер',a,d||'')}/>}
         {tab==='sales'&&<SalesReportTab branchId={branchId}/>}
-        {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
+        {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId} filteredToday/>}
         {tab==='logs'&&<LogsTab logs={logs}/>}
         {false&&<>
           <p style={{color:C.muted,fontSize:'0.8rem',margin:'0 0 1rem'}}>placeholder</p>
@@ -754,9 +754,14 @@ function OrderCard({o,branchId}:{key?:React.Key;o:Order;branchId:string}) {
   );
 }
 
-function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
+function OrdersKitchenView({orders,branchId,filteredToday}:{orders:Order[];branchId:string;filteredToday?:boolean}) {
   const [filter,setFilter]=useState<KitchenFilter>('all');
-  const active=orders.filter(o=>o.status!=='served').sort((a,b)=>a.createdAt-b.createdAt);
+  const [dateFilter,setDateFilter]=useState<'today'|'all'>('today');
+  const todayStart=new Date(); todayStart.setHours(0,0,0,0);
+  const active=orders
+    .filter(o=>o.status!=='served')
+    .filter(o=>dateFilter==='today'?o.createdAt>=todayStart.getTime():true)
+    .sort((a,b)=>a.createdAt-b.createdAt);
   const counts={
     all:active.length,
     pending:active.filter(o=>o.status==='pending').length,
@@ -916,18 +921,22 @@ function SalesReportTab({branchId}:{branchId:string}) {
     {k:'custom',l:'Сонголтот',ms:0},
   ];
 
+  const [error,setError]=useState('');
   const load=async()=>{
-    setLoading(true);
-    let fromMs=Date.now()-86400000, toMs=Date.now();
-    if(filter==='custom'&&fromDate&&toDate){
-      fromMs=new Date(fromDate).getTime();
-      toMs=new Date(toDate).getTime()+86399999;
-    } else {
-      const f=FILTERS.find(f=>f.k===filter);
-      if(f) fromMs=Date.now()-f.ms;
-    }
-    const d=await getSalesReport(branchId,fromMs,toMs);
-    setData(d);setLoading(false);
+    setLoading(true);setError('');
+    try{
+      let fromMs=Date.now()-86400000, toMs=Date.now();
+      if(filter==='custom'&&fromDate&&toDate){
+        fromMs=new Date(fromDate).getTime();
+        toMs=new Date(toDate).getTime()+86399999;
+      } else {
+        const f=FILTERS.find(f2=>f2.k===filter);
+        if(f) fromMs=Date.now()-f.ms;
+      }
+      const d=await getSalesReport(branchId,fromMs,toMs);
+      setData(d);
+    }catch(e){setError(String(e));}
+    setLoading(false);
   };
 
   useEffect(()=>{load();},[filter,fromDate,toDate]);
@@ -1002,7 +1011,8 @@ function SalesReportTab({branchId}:{branchId:string}) {
         </div>
       </div>
 
-      {loading&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}>Ачаалж байна...</div>}
+      {loading&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}>⏳ Ачаалж байна...</div>}
+      {error&&<div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'10px',padding:'1rem',color:C.red,fontSize:'0.85rem',marginTop:'0.75rem'}}>⚠️ Алдаа: {error}</div>}
 
       {data&&!loading&&<>
         {/* Summary cards */}
@@ -1479,6 +1489,7 @@ function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:T
   const [newQ,setNewQ]=useState('');
   const [loading,setLoading]=useState(false);
   const [saved,setSaved]=useState(false);
+  const [nameSaved,setNameSaved]=useState(false);
   const [logoPreview,setLogoPreview]=useState('');
   const [logoB64,setLogoB64]=useState('');
   const logoInputRef=useRef<HTMLInputElement>(null);
@@ -1515,9 +1526,15 @@ function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:T
         <p style={lbl}>🏷️ БРЕНД & РЕСТОРАН ТОХИРГОО</p>
         <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem'}}>
           <div>
-            <label style={{...lbl,display:'block',margin:'0 0 0.3rem'}}>Ресторан/салбарын нэр</label>
-            <input value={qrTopText} onChange={e=>setQrTopText(e.target.value)} placeholder="МЕНЮ" style={inp}/>
-            <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.7rem',margin:'0.25rem 0 0'}}>QR хэвлэлт болон системийн гарчигт ашиглагдана</p>
+            <label style={{...lbl,display:'block',margin:'0 0 0.3rem'}}>РЕСТОРАН/САЛБАРЫН НЭР</label>
+            <div style={{display:'flex',gap:'0.5rem'}}>
+              <input value={qrTopText} onChange={e=>setQrTopText(e.target.value)} placeholder="Ресторан нэр" style={{...inp,flex:1}}/>
+              <button onClick={async()=>{await saveSettings(branchId,{qrTopText} as any);setNameSaved(true);setTimeout(()=>setNameSaved(false),2000);}}
+                style={{padding:'0.5rem 1rem',background:nameSaved?C.green:C.orange,border:'none',borderRadius:'8px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',flexShrink:0,transition:'background 0.2s'}}>
+                {nameSaved?'✓ Хадгалагдлаа':'Хадгалах'}
+              </button>
+            </div>
+            <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.7rem',margin:'0.25rem 0 0'}}>QR хэвлэлт болон sidebar-д харагдана</p>
           </div>
           <div>
             <label style={{...lbl,display:'block',margin:'0 0 0.3rem'}}>ЛОГО ЗУРАГ</label>
