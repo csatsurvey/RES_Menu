@@ -370,9 +370,11 @@ function MenuItemModal({branchId,initial,onClose}:{branchId:string;initial:MenuF
         <div style={{marginBottom:'1rem'}}>
           <label style={lbl}>🖼️ Хоолны зураг</label>
           {preview
-            ?<div style={{position:'relative',borderRadius:'14px',overflow:'hidden',height:'160px',marginBottom:'0.5rem'}}>
-               <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-               <button onClick={()=>{setPreview('');setForm(f=>({...f,image:''}));}} style={{position:'absolute',top:'8px',right:'8px',background:'rgba(0,0,0,0.6)',border:'none',color:'white',borderRadius:'20px',padding:'0.3rem 0.75rem',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✕ Устгах</button>
+            ?<div style={{display:'flex',flexDirection:'column',alignItems:'center',marginBottom:'0.75rem',gap:'0.5rem'}}>
+               <div style={{position:'relative',borderRadius:'14px',overflow:'hidden',width:'260px',height:'195px',flexShrink:0}}>
+                 <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+               </div>
+               <button onClick={()=>{setPreview('');setForm(f=>({...f,image:''}));}} style={{padding:'0.35rem 1rem',background:'#FEE2E2',border:'none',color:'#EF4444',borderRadius:'20px',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✕ Зураг устгах</button>
              </div>
             :<div onClick={()=>fileRef.current?.click()}
                style={{height:'90px',border:'2px dashed #E7E5E4',borderRadius:'14px',display:'flex',flexDirection:'row',alignItems:'center',justifyContent:'center',cursor:'pointer',background:'#FAFAFA',marginBottom:'0.5rem',gap:'0.75rem'}}
