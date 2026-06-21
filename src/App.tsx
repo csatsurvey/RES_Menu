@@ -427,7 +427,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const resolved=withPhone.filter(s=>s.resolved);
   const anonymous=surveys.filter(s=>!s.phone||!s.phone.trim());
 
-  const inp:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box'};
+  const inp:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box',colorScheme:'dark' as any};
 
   const NAV:{id:AdminTab;label:string;icon:string}[]=[
     {id:'dashboard',label:'Үнэлгээний Дашбоард',icon:'📊'},
@@ -461,7 +461,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
       </div>
 
       {/* Content */}
-      <div style={{flex:1,padding:'1.25rem',overflowY:'auto'}}>
+      <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto',minWidth:0}}>
+        <div style={{maxWidth:'900px',margin:'0 auto'}}>
 
         {/* ── DASHBOARD ── */}
         {tab==='dashboard'&&<>
@@ -607,7 +608,19 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
         {/* ── SETTINGS ── */}
         {tab==='settings'&&<>
           <div style={card}>
-            <p style={{fontWeight:'800',color:C.yellow,fontSize:'0.85rem',letterSpacing:'0.04em',margin:'0 0 1rem',textTransform:'uppercase' as const}}>⚙️ Тохиргоо & QR</p>
+            <p style={{fontWeight:'800',color:C.yellow,fontSize:'0.85rem',letterSpacing:'0.04em',margin:'0 0 0.75rem',textTransform:'uppercase' as const}}>⚙️ Тохиргоо & QR</p>
+            <div style={{background:C.inpBg,borderRadius:'10px',padding:'1rem',marginBottom:'1rem',border:`1px solid ${C.border}`}}>
+              <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.7rem',letterSpacing:'0.05em',margin:'0 0 0.6rem',textTransform:'uppercase' as const}}>CSAT СУДАЛГААНЫ АСУУЛТУУД</p>
+              {SURVEY_QUESTIONS.map((q,i)=>(
+                <div key={q.key} style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.4rem'}}>
+                  <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.75rem',width:'16px',flexShrink:0}}>{i+1}.</span>
+                  <div style={{flex:1,padding:'0.45rem 0.75rem',background:'rgba(255,255,255,0.04)',borderRadius:'8px',border:`1px solid ${C.border}`}}>
+                    <span style={{color:'rgba(255,255,255,0.8)',fontSize:'0.82rem'}}>{q.label.replace(/^\d+\.\s*/,'')}</span>
+                  </div>
+                </div>
+              ))}
+              <p style={{color:'rgba(255,255,255,0.3)',fontSize:'0.72rem',margin:'0.5rem 0 0'}}>+ NPS: Найз нөхөддөө санал болгох магадлал (0-10)</p>
+            </div>
             <p style={{color:C.muted,fontSize:'0.75rem',letterSpacing:'0.06em',margin:'0 0 0.75rem',textTransform:'uppercase' as const}}>СТАТИК QR ХЭВЛЭЛТ</p>
             <div style={{display:'flex',gap:'0.75rem',alignItems:'center',flexWrap:'wrap'}}>
               <select value={showQR||''} onChange={e=>setShowQR(Number(e.target.value)||null)}
@@ -656,6 +669,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
         </>}
       </div>
 
+      </div>{/* /maxWidth wrapper */}
       {/* Menu Modal */}
       {menuModal&&<MenuItemModal branchId={branchId} initial={menuModal} onClose={()=>setMenuModal(null)}/>}
 
@@ -791,12 +805,12 @@ function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initia
     }catch{ setError('Хадгалахад алдаа гарлаа'); setUploading(false); }
   };
 
-  const inp:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box'};
+  const inp:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box',colorScheme:'dark' as any};
   const lbl:React.CSSProperties={display:'block',color:C.muted,fontSize:'0.75rem',fontWeight:'600',marginBottom:'0.3rem',letterSpacing:'0.04em'};
 
   return(
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'flex-end'}} onClick={onClose}>
-      <div style={{background:C.card,borderRadius:'20px 20px 0 0',padding:'1.5rem',width:'100%',maxHeight:'92vh',overflowY:'auto',border:`1px solid ${C.border}`,borderBottom:'none'}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}} onClick={onClose}>
+      <div style={{background:C.card,borderRadius:'16px',padding:'1.25rem',width:'100%',maxWidth:'480px',maxHeight:'90vh',overflowY:'auto',border:`1px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
           <h3 style={{fontWeight:'800',color:C.yellow,margin:0}}>{form.id?'✏️ Хоол засах':'➕ Шинэ хоол нэмэх'}</h3>
           <button onClick={onClose} style={{background:C.inpBg,border:'none',width:'32px',height:'32px',borderRadius:'50%',cursor:'pointer',color:C.muted,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.1rem'}}>✕</button>
@@ -807,13 +821,13 @@ function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initia
           <label style={lbl}>🖼️ ХООЛНЫ ЗУРАГ</label>
           {preview
             ?<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.5rem',marginBottom:'0.5rem'}}>
-               <div style={{position:'relative',borderRadius:'12px',overflow:'hidden',width:'260px',height:'195px'}}>
+               <div style={{position:'relative',borderRadius:'10px',overflow:'hidden',width:'200px',height:'150px'}}>
                  <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                </div>
                <button onClick={()=>{setPreview('');setForm((f:any)=>({...f,image:''}));}} style={{padding:'0.3rem 0.875rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'20px',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✕ Зураг устгах</button>
              </div>
             :<div onClick={()=>fileRef.current?.click()}
-               style={{height:'90px',border:`2px dashed ${C.border}`,borderRadius:'12px',display:'flex',flexDirection:'row',alignItems:'center',justifyContent:'center',cursor:'pointer',background:C.inpBg,marginBottom:'0.5rem',gap:'0.75rem'}}
+               style={{height:'68px',border:`2px dashed ${C.border}`,borderRadius:'10px',display:'flex',flexDirection:'row',alignItems:'center',justifyContent:'center',cursor:'pointer',background:C.inpBg,marginBottom:'0.5rem',gap:'0.6rem'}}
                onMouseOver={e=>{e.currentTarget.style.borderColor=C.yellow;}} onMouseOut={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.08)';}}>
                <span style={{fontSize:'2rem'}}>{uploading?'⏳':'📷'}</span>
                <div><p style={{margin:0,fontWeight:'700',color:C.text,fontSize:'0.875rem'}}>{uploading?'Боловсруулж байна...':'Зураг оруулах'}</p><p style={{margin:0,fontSize:'0.72rem',color:C.muted}}>JPG, PNG · Автоматаар жижигрэнэ</p></div>
@@ -822,7 +836,7 @@ function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initia
           {!preview&&<button onClick={()=>fileRef.current?.click()} style={{padding:'0.4rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',background:'transparent',color:C.muted,cursor:'pointer',fontWeight:'600',fontSize:'0.78rem'}}>📁 Файл сонгох</button>}
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem',marginBottom:'0.75rem'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem',marginBottom:'0.6rem'}}>
           <div style={{gridColumn:'1/-1'}}><label style={lbl}>ХООЛНЫ НЭР *</label><input value={form.name} onChange={e=>setForm((f:any)=>({...f,name:e.target.value}))} placeholder="Жишээ: Цуйван" style={inp}/></div>
           <div><label style={lbl}>АНГИЛАЛ *</label><input value={form.category} onChange={e=>setForm((f:any)=>({...f,category:e.target.value}))} placeholder="Үндсэн хоол" style={inp}/></div>
           <div><label style={lbl}>ҮНЭ (₮) *</label><input type="number" value={form.price} onChange={e=>setForm((f:any)=>({...f,price:e.target.value}))} placeholder="12000" style={inp}/></div>
@@ -839,9 +853,9 @@ function MenuItemModal({ branchId, initial, onClose }: { branchId:string; initia
         </div>
 
         {error&&<p style={{color:C.red,fontSize:'0.85rem',textAlign:'center',background:`${C.red}11`,padding:'0.5rem',borderRadius:'8px',margin:'0 0 1rem'}}>{error}</p>}
-        <div style={{display:'flex',gap:'0.75rem'}}>
-          <button onClick={onClose} style={{flex:1,padding:'0.875rem',border:`1px solid ${C.border}`,borderRadius:'12px',background:'transparent',color:C.muted,fontWeight:'700',cursor:'pointer'}}>Болих</button>
-          <button onClick={handleSave} disabled={uploading} style={{flex:2,padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:uploading?0.7:1}}>
+        <div style={{display:'flex',gap:'0.6rem',marginTop:'0.25rem'}}>
+          <button onClick={onClose} style={{padding:'0.7rem 1.25rem',border:`1px solid ${C.border}`,borderRadius:'10px',background:'transparent',color:C.muted,fontWeight:'700',cursor:'pointer',fontSize:'0.875rem'}}>Болих</button>
+          <button onClick={handleSave} disabled={uploading} style={{flex:1,padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',opacity:uploading?0.7:1,fontSize:'0.875rem'}}>
             {uploading?'Хадгалж байна...':'✅ Хадгалах'}
           </button>
         </div>
