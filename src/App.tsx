@@ -5,7 +5,7 @@ import {
   setTables as setTablesDB, subscribeToTables,
   subscribeToOrders, subscribeToTableOrders, createOrder, updateOrderStatus,
   subscribeToSurveys, createSurvey, setSurveyResolved,
-  subscribeToMenu, saveMenuItem, deleteMenuItem, compressImage,
+  subscribeToMenu, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
   getStaff, addStaff, removeStaff, updateStaff,
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
@@ -175,7 +175,7 @@ function LandingView({ onManager, onStaff }: { onManager:(id:string)=>void; onSt
 // SURVEY MODAL
 // ════════════════════════════════════════════════════════
 type SurveyData = { foodQuality:number; ambiance:number; staffAttitude:number; priceValue:number; service:number; nps:number; feedback:string; phone:string; };
-const EMPTY_SURVEY: SurveyData = { foodQuality:0,ambiance:0,staffAttitude:0,priceValue:0,service:0,nps:0,feedback:'',phone:'' };
+const EMPTY_SURVEY: SurveyData = { foodQuality:0,ambiance:0,staffAttitude:0,priceValue:0,service:0,nps:-1,feedback:'',phone:'' };
 
 function SurveyModal({ branchId, tableNum, onClose }: { branchId:string; tableNum:number; onClose:()=>void }) {
   const [s, setS] = useState<SurveyData>(EMPTY_SURVEY);
@@ -235,12 +235,12 @@ function SurveyModal({ branchId, tableNum, onClose }: { branchId:string; tableNu
         <textarea value={s.feedback} onChange={e=>setS(p=>({...p,feedback:e.target.value}))} rows={2}
           placeholder="Нэмэлт санал, сэтгэгдэл... (заавал биш)"
           style={{width:'100%',padding:'0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'10px',fontSize:'0.875rem',outline:'none',resize:'none',color:C.text,boxSizing:'border-box',marginBottom:'0.5rem'}}/>
-        <input value={s.phone} onChange={e=>setS(p=>({...p,phone:e.target.value}))}
-          placeholder="☎ Утасны дугаар — холбоо барих бол (заавал биш)"
+        <input value={s.phone} onChange={e=>setS(p=>({...p,phone:e.target.value.replace(/\D/g,'').slice(0,8)}))} maxLength={8}
+          placeholder="☎ Утасны дугаар (8 оронтой)"
           style={{width:'100%',padding:'0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'10px',fontSize:'0.875rem',outline:'none',color:C.text,boxSizing:'border-box',marginBottom:'1rem'}}/>
 
-        <button onClick={submit} disabled={!allStars||!s.nps||loading}
-          style={{width:'100%',padding:'0.9rem',background:(!allStars||!s.nps)?C.inpBg:C.yellow,color:(!allStars||!s.nps)?C.muted:'#000',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.95rem',transition:'all 0.2s'}}>
+        <button onClick={submit} disabled={!allStars||s.nps<0||loading}
+          style={{width:'100%',padding:'0.9rem',background:(!allStars||s.nps<0)?C.inpBg:C.yellow,color:(!allStars||s.nps<0)?C.muted:'#000',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.95rem',transition:'all 0.2s',opacity:(!allStars||s.nps<0)?0.5:1}}>
           {loading?'Илгээж байна...':'✓ ИЛГЭЭХ'}
         </button>
       </div>
@@ -264,6 +264,7 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
   const [branchName, setBranchName] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lightbox, setLightbox] = useState<string|null>(null);
 
   useEffect(()=>{
     getBranch(branchId).then(b=>b&&setBranchName(b.name));
@@ -338,8 +339,8 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
                 )}
               </div>
               {item.image&&(
-                <div style={{height:'200px',overflow:'hidden'}}>
-                  <img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/>
+                <div style={{height:'200px',overflow:'hidden',cursor:'zoom-in'}} onClick={()=>setLightbox(item.image)}>
+                  <img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',transition:'transform 0.2s'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}} onMouseOver={e=>{(e.target as HTMLImageElement).style.transform='scale(1.03)';}} onMouseOut={e=>{(e.target as HTMLImageElement).style.transform='scale(1)';}} />
                 </div>
               )}
               <div style={{padding:'0.75rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:`1px solid ${C.border}`}}>
@@ -417,6 +418,12 @@ function CustomerView({ branchId, tableNum }: { branchId:string; tableNum:number
       </div>}
 
       {showSurvey&&<SurveyModal branchId={branchId} tableNum={tableNum} onClose={()=>setShowSurvey(false)}/>}
+      {lightbox&&(
+        <div onClick={()=>setLightbox(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.95)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'zoom-out'}}>
+          <img src={lightbox} alt="" style={{maxWidth:'100%',maxHeight:'90vh',objectFit:'contain',borderRadius:'8px',boxShadow:'0 0 40px rgba(0,0,0,0.8)'}}/>
+          <button onClick={()=>setLightbox(null)} style={{position:'absolute',top:'1rem',right:'1rem',background:'rgba(255,255,255,0.1)',border:'none',color:'white',width:'40px',height:'40px',borderRadius:'50%',cursor:'pointer',fontSize:'1.2rem',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -444,6 +451,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const [showQR, setShowQR] = useState<number|null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [resolveNote, setResolveNote] = useState<Record<string,string>>({});
+  const [editingStaff, setEditingStaff] = useState<Staff|null>(null);
   const pendingOrders = orders.filter(o=>o.status==='pending').length;
 
   useEffect(()=>{
@@ -480,7 +488,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
   const NAV:{id:AdminTab;label:string;icon:string}[]=[
     {id:'dashboard',label:'Үнэлгээний Дашбоард',icon:'📊'},
     {id:'complaints',label:'Санал хүсэлт удирдах',icon:'📞'},
-    {id:'menu',label:'Цэс, Орц, Зураг удирдах',icon:'📝'},
+    {id:'menu',label:'Хоолны цэс удирдах',icon:'🍽️'},
     {id:'tables',label:'Ширээ & QR',icon:'🪑'},
     {id:'staff',label:'Ажилтан & ПИН шинэчлэх',icon:'👤'},
     {id:'orders',label:`Ширээний захиалгууд (${pendingOrders})`,icon:'📋'},
@@ -574,32 +582,7 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
         </>}
 
         {/* ── MENU ── */}
-        {tab==='menu'&&<>
-          <button onClick={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})}
-            style={{padding:'0.7rem 1.5rem',background:C.orange,color:'white',border:'none',borderRadius:'10px',fontWeight:'700',cursor:'pointer',marginBottom:'1rem',fontSize:'0.875rem'}}>
-            + Шинэ хоол нэмэх
-          </button>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:'0.75rem'}}>
-            {menuItems.map(item=>(
-              <div key={item.id} style={{...card,marginBottom:0,padding:0,overflow:'hidden'}}>
-                {item.image&&<div style={{height:'160px',overflow:'hidden'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
-                <div style={{padding:'0.875rem'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.25rem'}}>
-                    <span style={{fontWeight:'800',color:C.text,fontSize:'0.9rem'}}>{item.name}</span>
-                    <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.9rem'}}>{formatPrice(item.price)}</span>
-                  </div>
-                  {(item as any).allergens&&<p style={{color:C.muted,fontSize:'0.75rem',margin:'0 0 0.5rem'}}>Орц: {(item as any).allergens}</p>}
-                  <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem'}}>
-                    <button onClick={()=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})}
-                      style={{flex:1,padding:'0.45rem',border:`1px solid ${C.border}`,borderRadius:'8px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.78rem'}}>Засах</button>
-                    <button onClick={()=>setDeleteTarget(item.id||null)}
-                      style={{width:'36px',border:'none',borderRadius:'8px',background:'rgba(231,76,60,0.15)',color:C.red,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>🗑️</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>}
+        {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} card={card} onEdit={(item)=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})} onDelete={(id)=>setDeleteTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})} logActivity={(a,d)=>logActivity(branchId,'Менежер',a,d)}/>}
 
         {/* ── TABLES & QR ── */}
         {tab==='tables'&&<>
@@ -680,6 +663,8 @@ function AdminPanel({ branchId, onLogout, isManager, staff }: { branchId:string;
       {/* Menu Modal */}
       {menuModal&&<MenuItemModal branchId={branchId} initial={menuModal} onClose={()=>setMenuModal(null)}/>}
 
+      {/* Staff Edit Modal */}
+      {editingStaff&&<StaffEditModal branchId={branchId} staff={editingStaff} onClose={()=>setEditingStaff(null)} onSaved={()=>getStaff(branchId).then(setStaffList)}/>}
       {/* Delete confirm */}
       {deleteTarget&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
         <div style={{background:C.card,borderRadius:'20px',padding:'1.5rem',maxWidth:'300px',width:'100%',textAlign:'center',border:`1px solid ${C.border}`}}>
@@ -883,6 +868,128 @@ function ComplaintTabs({ branchId, pending, resolved, anonymous, onResolve, onUn
 
 // ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════
+// MENU TAB with category filtering + active/inactive
+// ════════════════════════════════════════════════════════
+function MenuTab({branchId,menuItems,card,onEdit,onDelete,onNew,logActivity}:{
+  branchId:string; menuItems:MenuItem[]; card:React.CSSProperties;
+  onEdit:(item:MenuItem)=>void; onDelete:(id:string)=>void; onNew:()=>void;
+  logActivity:(action:string,detail:string)=>void;
+}) {
+  const [catFilter,setCatFilter]=useState('__all__');
+  const cats=[...new Set(menuItems.map(i=>i.category))];
+  const activeItems=menuItems.filter(i=>i.available);
+  const inactiveItems=menuItems.filter(i=>!i.available);
+  const displayed = catFilter==='__inactive__'
+    ? inactiveItems
+    : catFilter==='__all__'
+      ? activeItems
+      : activeItems.filter(i=>i.category===catFilter);
+
+  const toggleActive=async(item:MenuItem)=>{
+    await updateMenuItem(branchId,item.id!,{available:!item.available});
+    logActivity(item.available?'Хоол идэвхгүй болголоо':'Хоол идэвхтэй болголоо',item.name);
+  };
+
+  return(
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.875rem',flexWrap:'wrap' as const,gap:'0.5rem'}}>
+        <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap' as const}}>
+          {[{k:'__all__',l:`Бүгд (${activeItems.length})`},{k:'__inactive__',l:`Идэвхгүй (${inactiveItems.length})`},...cats.map(c=>({k:c,l:c}))].map(t=>(
+            <button key={t.k} onClick={()=>setCatFilter(t.k)}
+              style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${catFilter===t.k?C.yellow:C.border}`,background:catFilter===t.k?`${C.yellow}22`:'transparent',color:catFilter===t.k?C.yellow:'rgba(255,255,255,0.55)',fontWeight:catFilter===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+        <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem'}}>+ Шинэ хоол</button>
+      </div>
+      {displayed.length===0&&<div style={{textAlign:'center',padding:'3rem',color:'rgba(255,255,255,0.3)'}}><div style={{fontSize:'3rem'}}>🍽️</div><p>{catFilter==='__inactive__'?'Идэвхгүй хоол байхгүй':'Хоол байхгүй'}</p></div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:'0.75rem'}}>
+        {displayed.map(item=>(
+          <div key={item.id} style={{...card,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6}}>
+            {item.image&&<div style={{height:'150px',overflow:'hidden'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
+            <div style={{padding:'0.875rem'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start'}}>
+                <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,paddingRight:'0.5rem'}}>{item.name}</span>
+                <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.88rem',flexShrink:0}}>{formatPrice(item.price)}</span>
+              </div>
+              <span style={{fontSize:'0.7rem',color:C.muted,display:'inline-block',marginBottom:'0.5rem'}}>{item.category}</span>
+              {!item.available&&<div style={{fontSize:'0.68rem',color:C.red,background:`${C.red}15`,borderRadius:'4px',padding:'0.1rem 0.4rem',display:'inline-block',marginLeft:'0.4rem'}}>Идэвхгүй</div>}
+              <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem',flexWrap:'wrap' as const}}>
+                <button onClick={()=>onEdit(item)} style={{flex:1,padding:'0.4rem',border:`1px solid ${C.border}`,borderRadius:'6px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.72rem'}}>✏️ Засах</button>
+                <button onClick={()=>toggleActive(item)} style={{flex:1,padding:'0.4rem',border:`1px solid ${item.available?C.red:C.green}`,borderRadius:'6px',background:'transparent',color:item.available?C.red:C.green,cursor:'pointer',fontWeight:'700',fontSize:'0.72rem'}}>
+                  {item.available?'Хаах':'Нээх'}
+                </button>
+                <button onClick={()=>onDelete(item.id||'')} style={{width:'30px',border:'none',borderRadius:'6px',background:`${C.red}22`,color:C.red,cursor:'pointer',fontSize:'0.75rem',display:'flex',alignItems:'center',justifyContent:'center'}}>🗑</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// STAFF EDIT MODAL
+// ════════════════════════════════════════════════════════
+function StaffEditModal({branchId,staff,onClose,onSaved}:{branchId:string;staff:Staff;onClose:()=>void;onSaved:()=>void}) {
+  const [name,setName]=useState(staff.name);
+  const [role,setRole]=useState(staff.role||'chef');
+  const [pin,setPin]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+
+  const save=async()=>{
+    if(!name.trim()){return setError('Нэр оруулна уу');}
+    if(pin&&pin.length<4){return setError('PIN дор хаяж 4 оронтой байх ёстой');}
+    setLoading(true);
+    const data:any={name:name.trim(),role};
+    if(pin) data.pin=pin;
+    await updateStaff(branchId,staff.id,data);
+    await logActivity(branchId,'Менежер','Ажилтан мэдээлэл засагдлаа',`${name} (${role})`);
+    setLoading(false);
+    onSaved();
+    onClose();
+  };
+
+  const inp2:React.CSSProperties={padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,borderRadius:'8px',fontSize:'0.875rem',outline:'none',background:'#1e1e2c',color:'#ffffff',width:'100%',boxSizing:'border-box' as const};
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}} onClick={onClose}>
+      <div style={{background:C.card,borderRadius:'16px',padding:'1.5rem',width:'100%',maxWidth:'380px',border:`1px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
+          <h3 style={{color:C.yellow,fontWeight:'800',margin:0,fontSize:'1rem'}}>✏️ Ажилтан засах</h3>
+          <button onClick={onClose} style={{background:C.inpBg,border:'none',color:C.muted,width:'30px',height:'30px',borderRadius:'50%',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+        </div>
+        <div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
+          <div>
+            <label style={{color:C.muted,fontSize:'0.72rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,display:'block',marginBottom:'0.3rem'}}>НЭР *</label>
+            <input value={name} onChange={e=>setName(e.target.value)} style={inp2} placeholder="Ажилтны нэр"/>
+          </div>
+          <div>
+            <label style={{color:C.muted,fontSize:'0.72rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,display:'block',marginBottom:'0.3rem'}}>РОЛЬ</label>
+            <CustomSelect value={role} onChange={setRole} placeholder="Роль сонгох"
+              options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Ажлын Менежер'}]}/>
+          </div>
+          <div>
+            <label style={{color:C.muted,fontSize:'0.72rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,display:'block',marginBottom:'0.3rem'}}>ШИНЭ PIN КОД (хоосон = өөрчлөхгүй)</label>
+            <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,8))} type="password" placeholder="•••• " style={inp2} inputMode="numeric"/>
+          </div>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,textAlign:'center'}}>{error}</p>}
+          <div style={{display:'flex',gap:'0.6rem',marginTop:'0.25rem'}}>
+            <button onClick={onClose} style={{padding:'0.75rem 1.25rem',border:`1px solid ${C.border}`,borderRadius:'10px',background:'transparent',color:C.muted,fontWeight:'700',cursor:'pointer',fontSize:'0.875rem'}}>Болих</button>
+            <button onClick={save} disabled={loading} style={{flex:1,padding:'0.75rem',background:C.orange,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
+              {loading?'Хадгалж байна...':'✅ Хадгалах'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // SETTINGS TAB
 // ════════════════════════════════════════════════════════
 function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:Table[];onSetTables:(id:string,n:number)=>Promise<void>;inp:React.CSSProperties}) {
@@ -931,9 +1038,17 @@ function SettingsTab({branchId,tables,onSetTables,inp}:{branchId:string;tables:T
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:'0.5rem'}}>
           {tables.map(t=>(
-            <div key={t.id} style={{background:C.inpBg,borderRadius:'8px',padding:'0.5rem 0.75rem',border:`1px solid ${t.status==='occupied'?'rgba(239,68,68,0.4)':'rgba(46,204,113,0.3)'}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div key={t.id} style={{background:C.inpBg,borderRadius:'8px',padding:'0.5rem 0.75rem',border:`1px solid ${t.status==='occupied'?'rgba(239,68,68,0.4)':'rgba(46,204,113,0.3)'}`,display:'flex',justifyContent:'space-between',alignItems:'center',gap:'0.5rem'}}>
               <span style={{color:'rgba(255,255,255,0.8)',fontSize:'0.82rem',fontWeight:'700'}}>Ширээ {t.number}</span>
-              <span style={{fontSize:'0.65rem',color:t.status==='occupied'?C.red:C.green,fontWeight:'700'}}>{t.status==='occupied'?'•':'○'}</span>
+              <div style={{display:'flex',alignItems:'center',gap:'0.3rem'}}>
+                <span style={{fontSize:'0.65rem',color:t.status==='occupied'?C.red:C.green,fontWeight:'700'}}>{t.status==='occupied'?'Дүүрэн':'Сул'}</span>
+                <button onClick={async()=>{
+                  if(!window.confirm(`Ширээ ${t.number}-г устгах уу?`))return;
+                  const {remove:rmv,ref:r}=await import('firebase/database');
+                  const {db}=await import('./lib/firebase');
+                  await rmv(r(db,`branches/${branchId}/tables/${t.id}`));
+                }} style={{background:`${C.red}22`,border:'none',color:C.red,borderRadius:'4px',padding:'0.1rem 0.35rem',cursor:'pointer',fontSize:'0.7rem',lineHeight:1}}>✕</button>
+              </div>
             </div>
           ))}
         </div>
