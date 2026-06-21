@@ -370,7 +370,7 @@ function MenuItemModal({branchId,initial,onClose}:{branchId:string;initial:MenuF
         <div style={{marginBottom:'1rem'}}>
           <label style={lbl}>🖼️ Хоолны зураг</label>
           {preview
-            ?<div style={{position:'relative',borderRadius:'14px',overflow:'hidden',height:'200px',marginBottom:'0.5rem'}}>
+            ?<div style={{position:'relative',borderRadius:'14px',overflow:'hidden',height:'160px',marginBottom:'0.5rem'}}>
                <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                <button onClick={()=>{setPreview('');setForm(f=>({...f,image:''}));}} style={{position:'absolute',top:'8px',right:'8px',background:'rgba(0,0,0,0.6)',border:'none',color:'white',borderRadius:'20px',padding:'0.3rem 0.75rem',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✕ Устгах</button>
              </div>
