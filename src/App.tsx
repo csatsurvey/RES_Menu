@@ -436,16 +436,23 @@ function SalesTab({branchId}:{branchId:string}) {
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Борлуулалтын тайлан</title><style>body{font-family:sans-serif;padding:24px}h1{color:#E87B2F}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 12px;border:1px solid #ddd}th{background:#f5f5f5}.sum{display:flex;gap:16px;margin:16px 0}.card{border:1px solid #ddd;border-radius:8px;padding:12px;min-width:120px}.v{font-size:1.4rem;font-weight:bold;color:#E87B2F;margin:0}.l{font-size:.75rem;color:#666;margin:4px 0 0}</style></head><body><h1>Борлуулалтын тайлан</h1><p>${SF.find(f=>f.k===filter)?.l||fd+' - '+td}</p><div class="sum"><div class="card"><p class="v">${formatPrice(data.totalRevenue)}</p><p class="l">Нийт орлого</p></div><div class="card"><p class="v">${data.orderCount}</p><p class="l">Захиалга</p></div><div class="card"><p class="v">${formatPrice(data.avgOrder)}</p><p class="l">Дундаж</p></div></div><table><thead><tr><th>#</th><th>Бүтээгдэхүүн</th><th>Тоо ш</th><th>Орлого</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2"><b>Нийт</b></td><td style="text-align:center"><b>${data.products.reduce((s,p)=>s+p.qty,0)}</b></td><td style="text-align:right"><b>${formatPrice(data.totalRevenue)}</b></td></tr></tfoot></table><script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   };
-  const expXLSX=async()=>{
+  const expXLSX=()=>{
     if(!data)return;
-    try{
-      // @ts-ignore
-      const X=await import('xlsx');
-      const rows=[['Борлуулалтын тайлан'],['Нийт орлого',data.totalRevenue,'Захиалга',data.orderCount,'Дундаж',data.avgOrder],[],['#','Бүтээгдэхүүн','Тоо ш','Орлого'],
-        ...data.products.map((p,i)=>[i+1,p.name,p.qty,p.revenue]),[],['Нийт','',data.products.reduce((s,p)=>s+p.qty,0),data.totalRevenue]];
-      const ws=X.utils.aoa_to_sheet(rows);const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,'Борлуулалт');
-      X.writeFile(wb,`sales_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.xlsx`);
-    }catch{alert('XLSX: package.json шинэчилж npm install хийнэ үү');}
+    // Build CSV as fallback (no external dependency needed)
+    const rows=[
+      ['Борлуулалтын тайлан'],
+      ['Нийт орлого',data.totalRevenue,'Захиалга',data.orderCount,'Дундаж',data.avgOrder],
+      [],
+      ['#','Бүтээгдэхүүн','Тоо ш','Орлого'],
+      ...data.products.map((p,i)=>[i+1,p.name,p.qty,p.revenue]),
+      [],
+      ['Нийт','',data.products.reduce((s,p)=>s+p.qty,0),data.totalRevenue],
+    ];
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`sales_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.csv`;
+    a.click();URL.revokeObjectURL(a.href);
   };
 
   return(
@@ -459,7 +466,7 @@ function SalesTab({branchId}:{branchId:string}) {
         </>}
         <div style={{marginLeft:'auto',display:'flex',gap:'0.4rem'}}>
           <button onClick={expPDF} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'8px',color:C.red,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📄 PDF</button>
-          <button onClick={expXLSX} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📊 XLSX</button>
+          <button onClick={expXLSX} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📊 CSV</button>
         </div>
       </div>
       {err&&<div style={{background:`${C.red}11`,border:`1px solid ${C.red}33`,borderRadius:'10px',padding:'0.875rem',color:C.red,fontSize:'0.82rem',marginBottom:'1rem'}}>⚠️ {err}</div>}
