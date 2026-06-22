@@ -206,7 +206,7 @@ tr:hover td{background:rgba(255,255,255,0.03)}
 </div>
 
 <script>
-const ADMIN_PASS = 'GALBI2025';
+const ADMIN_PASS = 'Aquarius2026';
 const FB_CONFIG = {
   apiKey:"AIzaSyCaMrXWbpZ2PWAz0n7Pg3BSfQlbWKmUIp0",
   databaseURL:"https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -351,6 +351,7 @@ function renderTable() {
       <td>${l.phone||'—'}</td>
       <td><span class="badge ${badges[es]}">${labels[es]}</span></td>
       <td>${endStr} ${es!=='blocked'&&es!=='expired'?`<br><span class="${dlClass}">${dl>0?dl+' хоног үлдсэн':'Дуусчээ'}</span>`:''}</td>
+      <td>${l.branchId?`<span style="font-family:monospace;font-size:0.72rem;color:rgba(255,255,255,0.6)">${l.branchId.slice(0,12)}...</span><br><span style="font-size:0.68rem;color:#2ECC71">✓ Холбоотой</span>`:`<button class="btn btn-orange btn-sm" onclick="openLink('${l.key}')">🔗 Холбох</button>`}</td>
       <td style="display:flex;gap:0.35rem;flex-wrap:wrap">
         <button class="btn btn-yellow btn-sm" onclick="openEdit('${l.key}')">✏️</button>
         ${es!=='blocked'
@@ -406,6 +407,84 @@ function quickUnblock(key) {
 function copyKey(key) {
   navigator.clipboard.writeText(key).then(() => alert('Хуулагдлаа: ' + key));
 }
+
+// BRANCH LINKING
+let branches = {};
+function loadBranches() {
+  db.ref('branches').once('value', snap => {
+    branches = {};
+    if (snap.exists()) {
+      snap.forEach(child => {
+        const val = child.val();
+        branches[child.key] = val.info?.name || val.name || child.key;
+      });
+    }
+    renderBranchOpts();
+  });
+}
+function renderBranchOpts() {
+  const sel = document.getElementById('linkBranchSel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Салбар сонгоно уу --</option>';
+  Object.entries(branches).forEach(([id, name]) => {
+    sel.innerHTML += `<option value="${id}">${name} (${id.slice(0,10)}...)</option>`;
+  });
+}
+function openLink(licKey) {
+  document.getElementById('linkKey').value = licKey;
+  document.getElementById('linkKeyLabel').textContent = licKey;
+  renderBranchOpts();
+  document.getElementById('linkModal').style.display = 'flex';
+}
+function closeLink() { document.getElementById('linkModal').style.display = 'none'; }
+async function doLink() {
+  const key = document.getElementById('linkKey').value;
+  const branchId = document.getElementById('linkBranchSel').value;
+  if (!branchId) { alert('Салбар сонгоно уу'); return; }
+  // Write to both places simultaneously
+  const updates = {};
+  updates[`licenses/${key}/branchId`] = branchId;
+  updates[`branches/${branchId}/licenseKey`] = key;
+  await db.ref().update(updates);
+  closeLink();
+  alert('✅ Амжилттай холбогдлоо!');
+}
+function unlinkBranch(key, branchId) {
+  if (!confirm('Холбоосыг таслах уу?')) return;
+  const updates = {};
+  updates[`licenses/${key}/branchId`] = null;
+  if (branchId) updates[`branches/${branchId}/licenseKey`] = null;
+  db.ref().update(updates);
+}
+
+const origInit = initFirebase;
+initFirebase = function() {
+  origInit();
+  loadBranches();
+};
 </script>
+
+<!-- LINK MODAL -->
+<div class="modal-bg" id="linkModal" style="display:none" onclick="if(event.target===this)closeLink()">
+  <div class="modal" style="max-width:460px">
+    <h3>🔗 Лицензийг салбартай холбох</h3>
+    <input type="hidden" id="linkKey"/>
+    <div style="background:rgba(245,193,32,0.1);border:1px solid rgba(245,193,32,0.3);border-radius:8px;padding:0.6rem 0.875rem;margin-bottom:1rem">
+      <span style="font-family:monospace;color:#F5C120;font-size:0.875rem" id="linkKeyLabel"></span>
+    </div>
+    <div>
+      <label>Системд бүртгэлтэй салбар сонгоно уу</label>
+      <select id="linkBranchSel"></select>
+      <p style="color:rgba(255,255,255,0.4);font-size:0.72rem;margin-top:0.35rem">
+        💡 Хэрэв салбар жагсаалтад байхгүй бол эхлээд ресторан апп-д шинэ салбар үүсгэнэ үү
+      </p>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="closeLink()">Болих</button>
+      <button class="btn btn-orange" onclick="doLink()">🔗 Холбох</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
