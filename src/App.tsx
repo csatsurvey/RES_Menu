@@ -95,7 +95,7 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> 
 }
 
 function AppInner() {
-  const [view,setView]=useState<'landing'|'customer'|'admin'>('landing');
+  const [view,setView]=useState<'landing'|'customer'|'admin'|'activate'>('landing');
   const [branchId,setBranchId]=useState('');
   const [tableNum,setTableNum]=useState(0);
   const [isManager,setIsManager]=useState(false);
@@ -113,16 +113,142 @@ function AppInner() {
     if(isMan){setIsManager(true);}else{setStaff(s);}
     setBranchId(id);
     setLicLoading(true);
-    setView('admin');
     const lic=await getBranchLicenseStatus(id);
-    console.log('🔑 LICENSE CHECK:', JSON.stringify(lic));
-    alert(`LICENSE: ${lic.status} | valid:${lic.valid} | ${lic.message}`);
     setLicense(lic);
     setLicLoading(false);
+    if(lic.status==='none'&&isMan){
+      // No license linked yet — go to activation screen
+      setView('activate');
+    } else {
+      setView('admin');
+    }
   };
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
+  if(view==='activate') return <LicenseActivateView branchId={branchId} onSuccess={lic=>{setLicense(lic);setView('admin');}} onBack={()=>{setView('landing');setBranchId('');setIsManager(false);}}/>;
   if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} licLoading={licLoading} onLogout={logout}/>;
   return <LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
+}
+
+
+// ════════════════════════════════════════════════════════════
+// LICENSE ACTIVATE VIEW
+// ════════════════════════════════════════════════════════════
+function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSuccess:(lic:LicenseCheck)=>void;onBack:()=>void}) {
+  const [key,setKey]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const [step,setStep]=useState<'enter'|'confirm'|'done'>('enter');
+  const [preview,setPreview]=useState<LicenseCheck|null>(null);
+
+  const verify=async()=>{
+    const k=key.trim().toUpperCase();
+    if(!k){return setError('Лицензийн түлхүүр оруулна уу');}
+    setLoading(true);setError('');
+    try{
+      const snap=await import('./lib/db').then(m=>m.getLicense(k));
+      if(!snap){setError('Түлхүүр олдсонгүй. Зөв оруулсан эсэхийг шалгана уу.');setLoading(false);return;}
+      // Check if already used by another branch
+      if((snap as any).branchId&&(snap as any).branchId!==branchId){
+        setError('Энэ түлхүүр өөр салбарт холбогдсон байна.');setLoading(false);return;
+      }
+      const {checkLicenseStatus}=await import('./lib/db');
+      const check=checkLicenseStatus(snap);
+      if(!check.valid){setError(check.message);setLoading(false);return;}
+      setPreview(check);
+      setStep('confirm');
+    }catch(e){setError('Алдаа гарлаа: '+String(e));}
+    setLoading(false);
+  };
+
+  const activate=async()=>{
+    setLoading(true);
+    try{
+      const {setBranchLicense,getBranchLicenseStatus}=await import('./lib/db');
+      await setBranchLicense(branchId,key.trim().toUpperCase());
+      const lic=await getBranchLicenseStatus(branchId);
+      setStep('done');
+      setTimeout(()=>onSuccess(lic),1500);
+    }catch(e){setError('Идэвхжүүлэхэд алдаа: '+String(e));}
+    setLoading(false);
+  };
+
+  return(
+    <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+      <div style={{width:'100%',maxWidth:'420px'}}>
+        {/* Header */}
+        <div style={{textAlign:'center',marginBottom:'2rem'}}>
+          <div style={{fontSize:'2.5rem',marginBottom:'0.75rem'}}>{step==='done'?'🎉':'🔑'}</div>
+          <h1 style={{color:C.yellow,fontWeight:'800',fontSize:'1.25rem',margin:'0 0 0.25rem',letterSpacing:'0.04em'}}>
+            {step==='enter'?'ЛИЦЕНЗ ИДЭВХЖҮҮЛЭХ':step==='confirm'?'БАТАЛГААЖУУЛАХ':'АМЖИЛТТАЙ!'}
+          </h1>
+          <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>
+            {step==='enter'?'Лицензийн түлхүүрээ оруулна уу':step==='confirm'?'Доорх мэдээллийг шалгаад баталгаажуулна уу':'Лиценз идэвхжлээ. Системд орж байна...'}
+          </p>
+        </div>
+
+        <div style={{background:C.card,borderRadius:'20px',padding:'1.75rem',border:`1px solid ${C.border}`}}>
+          {step==='enter'&&<>
+            <div style={{marginBottom:'1rem'}}>
+              <label style={{color:C.muted,fontSize:'0.7rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,display:'block',marginBottom:'0.4rem'}}>ЛИЦЕНЗИЙН ТҮЛХҮҮР</label>
+              <input
+                value={key}
+                onChange={e=>setKey(e.target.value.toUpperCase())}
+                onKeyDown={e=>e.key==='Enter'&&verify()}
+                placeholder="RES-XXXX-XXXX-XXXX"
+                style={{...IS,fontFamily:'monospace',fontSize:'1rem',letterSpacing:'0.08em',textAlign:'center' as const}}
+                autoFocus
+              />
+              <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.4rem 0 0'}}>Жишээ: RES-A1B2-C3D4-E5F6</p>
+            </div>
+            {error&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}33`,borderRadius:'8px',padding:'0.65rem',marginBottom:'0.875rem'}}>
+              <p style={{color:C.red,fontSize:'0.82rem',margin:0,fontWeight:'600'}}>{error}</p>
+            </div>}
+            <button onClick={verify} disabled={loading||!key.trim()}
+              style={{width:'100%',padding:'0.9rem',background:key.trim()?C.orange:C.inpBg,color:key.trim()?'white':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.95rem',opacity:loading?0.7:1}}>
+              {loading?'Шалгаж байна...':'✓ Шалгах'}
+            </button>
+            <button onClick={onBack} style={{width:'100%',marginTop:'0.6rem',padding:'0.7rem',background:'transparent',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>
+              ← Буцах
+            </button>
+          </>}
+
+          {step==='confirm'&&preview&&<>
+            {/* License preview */}
+            <div style={{background:C.inpBg,borderRadius:'12px',padding:'1rem',marginBottom:'1.25rem',border:`1px solid ${C.border}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.6rem'}}>
+                <span style={{color:C.muted,fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const}}>Лицензийн мэдээлэл</span>
+                <span style={{padding:'0.2rem 0.6rem',borderRadius:'20px',fontSize:'0.72rem',fontWeight:'700',background:preview.status==='trial'?`${C.yellow}22`:`${C.green}22`,color:preview.status==='trial'?C.yellow:C.green}}>
+                  {preview.status==='trial'?'Туршилт':'Төлсөн'}
+                </span>
+              </div>
+              <p style={{color:C.yellow,fontFamily:'monospace',fontSize:'0.9rem',fontWeight:'700',margin:'0 0 0.5rem',letterSpacing:'0.06em'}}>{key.trim().toUpperCase()}</p>
+              <p style={{color:preview.status==='trial'?C.yellow:C.green,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.25rem'}}>{preview.message}</p>
+              {preview.license&&<>
+                <p style={{color:C.muted,fontSize:'0.78rem',margin:'0.25rem 0 0'}}>Эзэмшигч: {preview.license.ownerName}</p>
+                <p style={{color:C.muted,fontSize:'0.78rem',margin:'0.2rem 0 0'}}>Дуусах: {new Date(preview.license.endDate).toLocaleDateString('mn-MN')}</p>
+              </>}
+            </div>
+            {error&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}33`,borderRadius:'8px',padding:'0.65rem',marginBottom:'0.875rem'}}>
+              <p style={{color:C.red,fontSize:'0.82rem',margin:0}}>{error}</p>
+            </div>}
+            <div style={{display:'flex',gap:'0.6rem'}}>
+              <button onClick={()=>{setStep('enter');setError('');}} style={{padding:'0.75rem 1.25rem',background:'transparent',border:`1px solid ${C.border}`,borderRadius:'10px',color:C.muted,fontWeight:'700',cursor:'pointer'}}>← Буцах</button>
+              <button onClick={activate} disabled={loading}
+                style={{flex:1,padding:'0.75rem',background:C.green,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
+                {loading?'Идэвхжүүлж байна...':'🚀 Идэвхжүүлэх'}
+              </button>
+            </div>
+          </>}
+
+          {step==='done'&&<div style={{textAlign:'center' as const,padding:'1.5rem 0'}}>
+            <div style={{fontSize:'3rem',marginBottom:'0.75rem'}}>✅</div>
+            <p style={{color:C.green,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.25rem'}}>Амжилттай идэвхжлээ!</p>
+            <p style={{color:C.muted,fontSize:'0.82rem'}}>Системд орж байна...</p>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
