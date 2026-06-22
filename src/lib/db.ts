@@ -744,3 +744,54 @@ export const setBranchLicense = async (branchId: string, licenseKey: string): Pr
   await update(ref(db, `branches/${branchId}`), { licenseKey });
   await update(ref(db, `licenses/${licenseKey}`), { branchId });
 };
+
+// ── License Activation (key entry → trial starts NOW) ────────
+export const activateLicense = async (
+  branchId: string,
+  licenseKey: string
+): Promise<{ success: boolean; message: string; license?: License }> => {
+  const snap = await get(ref(db, `licenses/${licenseKey.trim().toUpperCase()}`));
+  if (!snap.exists()) return { success: false, message: '❌ Лицензийн түлхүүр олдсонгүй' };
+
+  const lic: License = { key: licenseKey, ...snap.val() };
+
+  if (lic.status === 'blocked')
+    return { success: false, message: '⛔ Энэ лиценз хаагдсан байна' };
+  if (lic.branchId && lic.branchId !== branchId)
+    return { success: false, message: '❌ Энэ түлхүүр өөр салбарт ашиглагдаж байна' };
+
+  // Activation: trial starts NOW
+  const now = Date.now();
+  const isPaid = lic.status === 'paid';
+  const startDate = now;
+  const endDate = isPaid ? now + 31536000000 : now + 1209600000; // 1 жил / 14 хоног
+  const status: License['status'] = isPaid ? 'paid' : 'trial';
+
+  const updates: Record<string, any> = {};
+  updates[`licenses/${licenseKey}/branchId`] = branchId;
+  updates[`licenses/${licenseKey}/startDate`] = startDate;
+  updates[`licenses/${licenseKey}/endDate`] = endDate;
+  updates[`licenses/${licenseKey}/status`] = status;
+  updates[`branches/${branchId}/licenseKey`] = licenseKey;
+  await update(ref(db), updates);
+
+  const activated = { ...lic, startDate, endDate, status, branchId };
+  return { success: true, message: `✅ Лиценз идэвхжлээ!`, license: activated };
+};
+
+// ════════════════════════════════════════════════════════════
+// MANAGER AUTH (license key + password)
+// ════════════════════════════════════════════════════════════
+export const getManagerPassword = async (licKey: string): Promise<string | null> => {
+  const snap = await get(ref(db, `licenses/${licKey}/managerPassword`));
+  return snap.exists() ? snap.val() : null;
+};
+
+export const setManagerPassword = async (licKey: string, passwordHash: string): Promise<void> => {
+  await update(ref(db, `licenses/${licKey}`), { managerPassword: passwordHash });
+};
+
+export const getBranchIdByLicense = async (licKey: string): Promise<string | null> => {
+  const snap = await get(ref(db, `licenses/${licKey}/branchId`));
+  return snap.exists() ? snap.val() : null;
+};
