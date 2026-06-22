@@ -735,7 +735,7 @@ export const checkLicenseStatus = (lic: License | null): LicenseCheck => {
 
 export const getBranchLicenseStatus = async (branchId: string): Promise<LicenseCheck> => {
   const branchSnap = await get(ref(db, `branches/${branchId}/licenseKey`));
-  if (!branchSnap.exists()) return { valid: true, status: 'paid', daysLeft: 9999, message: '🟢 Хязгааргүй (лицензгүй)', license: null };
+  if (!branchSnap.exists()) return { valid: false, status: 'none', daysLeft: 0, message: '⚠️ Лиценз холбоогүй байна', license: null };
   const lic = await getLicense(branchSnap.val());
   return checkLicenseStatus(lic);
 };
