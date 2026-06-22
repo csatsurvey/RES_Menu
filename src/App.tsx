@@ -66,18 +66,20 @@ function CSelect({value,onChange,options,placeholder,style}:{value:string;onChan
 // ════════════════════════════════════════════════════════════
 // ERROR BOUNDARY - catches runtime errors and shows them
 // ════════════════════════════════════════════════════════════
-class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:string|null}> {
-  constructor(props:any){super(props);this.state={error:null};}
-  static getDerivedStateFromError(e:Error){return{error:e.message+'\n'+e.stack};}
+interface EBState { error: string|null }
+class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> {
+  state: EBState = {error:null};
+  static getDerivedStateFromError(e:Error): EBState {return{error:e.message+'\n'+e.stack};}
   componentDidCatch(e:Error,info:any){console.error('App Error:',e,info);}
   render(){
-    if(this.state.error){
+    const {error}=this.state;
+    if(error){
       return(
         <div style={{minHeight:'100vh',background:'#0d0d12',display:'flex',alignItems:'center',justifyContent:'center',padding:'2rem'}}>
           <div style={{background:'#1a1a22',borderRadius:'16px',padding:'2rem',maxWidth:'700px',width:'100%',border:'1px solid rgba(231,76,60,0.4)'}}>
-            <h2 style={{color:'#E74C3C',margin:'0 0 1rem',fontSize:'1.1rem'}}>🚨 Runtime Error</h2>
-            <pre style={{color:'rgba(255,255,255,0.8)',fontSize:'0.75rem',background:'rgba(0,0,0,0.4)',padding:'1rem',borderRadius:'8px',overflow:'auto',maxHeight:'400px',whiteSpace:'pre-wrap' as const,wordBreak:'break-all' as const}}>
-              {this.state.error}
+            <h2 style={{color:'#E74C3C',margin:'0 0 1rem',fontSize:'1.1rem'}}>🚨 Runtime Error — надад screenshot илгээнэ үү</h2>
+            <pre style={{color:'rgba(255,255,255,0.8)',fontSize:'0.75rem',background:'rgba(0,0,0,0.4)',padding:'1rem',borderRadius:'8px',overflow:'auto',maxHeight:'400px',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+              {error}
             </pre>
             <button onClick={()=>window.location.reload()} style={{marginTop:'1rem',padding:'0.6rem 1.5rem',background:'#E87B2F',color:'white',border:'none',borderRadius:'8px',cursor:'pointer',fontWeight:'700'}}>
               🔄 Дахин ачаалах
@@ -86,7 +88,8 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:st
         </div>
       );
     }
-    return this.props.children;
+    const {children}=this.props;
+    return children;
   }
 }
 
