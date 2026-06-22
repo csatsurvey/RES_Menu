@@ -805,6 +805,40 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   );
 }
 
+
+function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;onLog:(a:string,d:string)=>void}) {
+  const [note,setNote]=useState('');
+  const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
+  return(
+    <div style={{...CS,padding:'1.25rem'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
+        <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
+        {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
+      </div>
+      <div style={{marginBottom:'0.75rem'}}>
+        {QS.filter(q=>(s as any)[q.k]).map(q=>(
+          <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+            <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
+            <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
+          </div>
+        ))}
+        <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
+          <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
+          <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
+        </div>
+      </div>
+      {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
+      {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
+        <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);onLog('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
+      </div>}
+      {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
+        {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
+        <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
+      </div>}
+    </div>
+  );
+}
 function AdminPanel({branchId,isManager,staff,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
@@ -862,39 +896,7 @@ function AdminPanel({branchId,isManager,staff,onLogout}:{branchId:string;isManag
   const [cTab,setCTab]=useState<'p'|'r'|'a'>('p');
   const cpd=wPhone.filter(s=>!s.resolved),crs=wPhone.filter(s=>s.resolved),can=surveys.filter(s=>!s.phone||!s.phone.trim());
 
-  function SCard({s,sa}:{s:Survey;sa:boolean}) {
-    const [note,setNote]=useState('');
-    const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
-    return(
-      <div style={{...CS,padding:'1.25rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
-          <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
-          {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
-        </div>
-        <div style={{marginBottom:'0.75rem'}}>
-          {QS.filter(q=>(s as any)[q.k]).map(q=>(
-            <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-              <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
-              <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
-            </div>
-          ))}
-          <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
-            <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
-            <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
-          </div>
-        </div>
-        {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
-        {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
-          <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
-          <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);logAct('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
-        </div>}
-        {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
-          {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
-          <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
-        </div>}
-      </div>
-    );
-  }
+  // SCard is defined outside AdminPanel (see below)
 
   const curSurveys=cTab==='p'?cpd:cTab==='r'?crs:can;
 
@@ -960,7 +962,7 @@ function AdminPanel({branchId,isManager,staff,onLogout}:{branchId:string;isManag
                 </button>
               ))}
             </div>
-            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SCard s={s} sa={cTab==='p'}/></div>)}
+            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SurveyCard s={s} sa={cTab==='p'} branchId={branchId} onLog={(a,d)=>logAct(a,d)}/></div>)}
           </>}
 
           {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})} logAct={(a,d)=>logAct(a,d)}/>}
