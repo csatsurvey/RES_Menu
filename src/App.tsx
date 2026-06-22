@@ -115,6 +115,8 @@ function AppInner() {
     setLicLoading(true);
     setView('admin');
     const lic=await getBranchLicenseStatus(id);
+    console.log('🔑 LICENSE CHECK:', JSON.stringify(lic));
+    alert(`LICENSE: ${lic.status} | valid:${lic.valid} | ${lic.message}`);
     setLicense(lic);
     setLicLoading(false);
   };
