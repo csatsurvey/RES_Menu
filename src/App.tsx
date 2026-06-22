@@ -108,13 +108,18 @@ function AppInner() {
   },[]);
   const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
   // Fetch license when entering admin view
-  const goAdmin=(id:string,isMan:boolean,s:Staff|null)=>{
+  const [licLoading,setLicLoading]=useState(false);
+  const goAdmin=async(id:string,isMan:boolean,s:Staff|null)=>{
     if(isMan){setIsManager(true);}else{setStaff(s);}
-    setBranchId(id);setView('admin');
-    getBranchLicenseStatus(id).then(setLicense);
+    setBranchId(id);
+    setLicLoading(true);
+    setView('admin');
+    const lic=await getBranchLicenseStatus(id);
+    setLicense(lic);
+    setLicLoading(false);
   };
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
-  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>;
+  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} licLoading={licLoading} onLogout={logout}/>;
   return <LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
 }
 
@@ -877,7 +882,7 @@ function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;o
     </div>
   );
 }
-function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;onLogout:()=>void}) {
+function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;licLoading?:boolean;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -970,7 +975,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           </p>
           {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
         </div>}
-        {(license===null||license.valid)&&<>
+        {licLoading&&<div style={{textAlign:'center' as const,padding:'5rem 2rem'}}><div style={{fontSize:'2rem',marginBottom:'1rem'}}>⏳</div><p style={{color:C.muted,fontWeight:'700'}}>Лиценз шалгаж байна...</p></div>}
+        {!licLoading&&license!==null&&license.valid&&<>
 
           {tab==='dashboard'&&<>
             <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
