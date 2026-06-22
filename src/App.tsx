@@ -952,23 +952,25 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             </button>
           ))}
         </nav>
-        {license&&<div style={{margin:'0.5rem 1rem 0',padding:'0.5rem 0.65rem',borderRadius:'8px',background:license.valid?(license.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${license.valid?(license.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
-          <p style={{color:license.valid?(license.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.68rem',fontWeight:'700',margin:0}}>{license.message}</p>
+        {license!==null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.6rem 0.75rem',borderRadius:'8px',background:license.valid?(license.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${license.valid?(license.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
+          <p style={{color:license.valid?(license.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.75rem',fontWeight:'800',margin:0,lineHeight:1.3}}>{license.message||'Шалгаж байна...'}</p>
         </div>}
-        {license&&!license.valid&&<div style={{margin:'0.5rem 1rem',padding:'0.5rem',background:`${C.red}11`,borderRadius:'6px',border:`1px solid ${C.red}33`}}>
-          <p style={{color:C.red,fontSize:'0.68rem',margin:'0 0 0.35rem',fontWeight:'600'}}>Системд нэвтрэх боломжгүй</p>
-          <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.65rem',margin:0}}>Лицензийн мэдээллийг шинэчлэхийн тулд эзэмшигчтэй холбоо барина уу</p>
+        {license===null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.5rem 0.65rem',borderRadius:'8px',background:`${C.yellow}18`,border:`1px solid ${C.yellow}33`}}>
+          <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:0}}>⏳ Лиценз шалгаж байна...</p>
         </div>}
         <button onClick={onLogout} style={{margin:'0.5rem 1rem 1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
       </div>
       <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto' as const,minWidth:0}}>
         <div style={{maxWidth:'960px',margin:'0 auto'}}>
-        {license&&!license.valid&&!isManager&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
-          <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🔒</div>
-          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.5rem'}}>{license.message}</h2>
-          <p style={{color:C.muted,fontSize:'0.875rem'}}>Системд нэвтрэх боломжгүй байна.<br/>Менежертэй холбоо барина уу.</p>
+        {(license!==null&&!license.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
+          <div style={{fontSize:'3.5rem',marginBottom:'1rem'}}>🔒</div>
+          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{license.message}</h2>
+          <p style={{color:C.muted,fontSize:'0.875rem',marginBottom:'1.5rem'}}>
+            {license.status==='none'?'Энэ салбарт лиценз холбоогүй байна.':license.status==='blocked'?'Лиценз хаагдсан. Эзэмшигчтэй холбоо барина уу.':'Лицензийн хугацаа дууссан. Эзэмшигчтэй холбоо барина уу.'}
+          </p>
+          {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
         </div>}
-        {(!license||license.valid||isManager)&&<>
+        {(license===null||license.valid)&&<>
 
           {tab==='dashboard'&&<>
             <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
