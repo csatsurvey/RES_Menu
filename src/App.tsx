@@ -11,6 +11,7 @@ import {
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck,
+  getManagerPassword, setManagerPassword, getBranchIdByLicense,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -41,6 +42,13 @@ const DEF_Q = ['Хоолны амт, чанар хэр байсан бэ?','Ре
 const KEYS = ['foodQuality','ambiance','staffAttitude','priceValue','service'] as const;
 type SK = typeof KEYS[number];
 
+
+
+// ── Password hash (SHA-256 via Web Crypto) ────────────────
+async function sha256(str: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 function Toggle({on,onChange}:{on:boolean;onChange:(v:boolean)=>void}) {
   return <button onClick={()=>onChange(!on)} style={{width:'44px',height:'24px',borderRadius:'12px',border:'none',cursor:'pointer',position:'relative',background:on?C.green:'rgba(255,255,255,0.15)',transition:'background 0.2s',padding:0,flexShrink:0}}>
@@ -95,7 +103,7 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> 
 }
 
 function AppInner() {
-  const [view,setView]=useState<'landing'|'customer'|'admin'|'activate'>('landing');
+  const [view,setView]=useState<'landing'|'customer'|'admin'>('landing');
   const [branchId,setBranchId]=useState('');
   const [tableNum,setTableNum]=useState(0);
   const [isManager,setIsManager]=useState(false);
@@ -106,10 +114,10 @@ function AppInner() {
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
   },[]);
-  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
+  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);localStorage.removeItem('rms_licKey');};
   // Fetch license when entering admin view
   const [licLoading,setLicLoading]=useState(false);
-  const goAdmin=async(id:string,isMan:boolean,s:Staff|null)=>{
+  const goAdmin=async(id:string,isMan:boolean,s:Staff|null,preloadedLic?:LicenseCheck|null)=>{
     if(isMan){setIsManager(true);}else{setStaff(s);}
     setBranchId(id);
     setLicLoading(true);
@@ -124,15 +132,179 @@ function AppInner() {
     }
   };
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
-  if(view==='activate') return <LicenseActivateView branchId={branchId} onSuccess={lic=>{setLicense(lic);setView('admin');}} onBack={()=>{setView('landing');setBranchId('');setIsManager(false);}}/>;
+
   if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} licLoading={licLoading} onLogout={logout}/>;
-  return <LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
+  return <LandingView onManager={(id,lic)=>{setIsManager(true);setBranchId(id);setLicense(lic);setView('admin');}} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
 }
 
 
 // ════════════════════════════════════════════════════════════
 // LICENSE ACTIVATE VIEW
 // ════════════════════════════════════════════════════════════
+function LandingView({onManager,onStaff}:{onManager:(id:string,lic:LicenseCheck)=>void;onStaff:(id:string,s:Staff)=>void}) {
+  const [branches,setBranches]=useState<Branch[]>([]);
+  const [mode,setMode]=useState<'select'|'manager'|'staff'>('select');
+  // Manager auth states
+  const [licKey,setLicKey]=useState('');
+  const [mStep,setMStep]=useState<'key'|'create'|'login'>('key');
+  const [mPass,setMPass]=useState('');
+  const [mPass2,setMPass2]=useState('');
+  const [mBranchName,setMBranchName]=useState('');
+  // Staff states
+  const [branchId,setBranchId]=useState('');
+  const [pin,setPin]=useState('');
+  const [error,setError]=useState('');
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{
+    getAllBranches().then(setBranches);
+    // Check localStorage for saved license key (same device auto-fill)
+    const saved=localStorage.getItem('rms_licKey');
+    if(saved){setLicKey(saved);}
+  },[]);
+
+  // ── MANAGER: Check license key ─────────────────────────
+  const checkLicKey=async()=>{
+    const k=licKey.trim().toUpperCase();
+    if(!k){return setError('Лицензийн түлхүүр оруулна уу');}
+    setLoading(true);setError('');
+    try{
+      const lic=await getLicense(k);
+      if(!lic){setLoading(false);return setError('Түлхүүр олдсонгүй. Зөв оруулсан эсэхийг шалгана уу.');}
+      const chk=checkLicenseStatus(lic);
+      if(!chk.valid){setLoading(false);return setError(chk.message);}
+      const existingPwd=await getManagerPassword(k);
+      setMBranchName(lic.branchName||'');
+      if(existingPwd){setMStep('login');}
+      else{setMStep('create');}
+    }catch(e){setError('Алдаа: '+String(e));}
+    setLoading(false);
+  };
+
+  // ── MANAGER: Create password (first time) ─────────────
+  const createPassword=async()=>{
+    if(mPass.length<6){return setError('Нууц үг дор хаяж 6 тэмдэгт байх ёстой');}
+    if(mPass!==mPass2){return setError('Нууц үг таарахгүй байна');}
+    setLoading(true);setError('');
+    try{
+      const hash=await sha256(mPass);
+      await setManagerPassword(licKey.trim().toUpperCase(),hash);
+      await loginWithKey();
+    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
+  };
+
+  // ── MANAGER: Login with password ──────────────────────
+  const loginWithKey=async()=>{
+    setLoading(true);setError('');
+    try{
+      const k=licKey.trim().toUpperCase();
+      const hash=await sha256(mPass);
+      const storedHash=await getManagerPassword(k);
+      if(storedHash&&storedHash!==hash){setLoading(false);return setError('Нууц үг буруу байна.');}
+      const brId=await getBranchIdByLicense(k);
+      if(!brId){setLoading(false);return setError('Энэ лицензт салбар холбоогүй байна. Системийн админтай холбоо барина уу.');}
+      localStorage.setItem('rms_licKey',k);
+      const lic=await getBranchLicenseStatus(brId);
+      onManager(brId,lic);
+    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
+  };
+
+  // ── STAFF login (unchanged) ────────────────────────────
+  const loginStaff=async()=>{
+    if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
+    setLoading(true);
+    const s=await verifyStaffPin(branchId,pin);
+    setLoading(false);
+    return s?onStaff(branchId,s):setError('PIN буруу байна');
+  };
+
+  const savedKey=localStorage.getItem('rms_licKey');
+
+  return(
+    <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+      <div style={{width:'100%',maxWidth:'400px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
+        <div style={{textAlign:'center',marginBottom:'1.75rem'}}>
+          <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
+          <h1 style={{fontSize:'1.35rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
+          <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
+        </div>
+
+        {mode==='select'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
+          <button onClick={()=>{setMode('manager');if(savedKey)setLicKey(savedKey);}} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            <span style={{fontSize:'1.4rem'}}>👔</span>
+            <div><div>Менежер нэвтрэх</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Лицензийн түлхүүр + нууц үг</div></div>
+          </button>
+          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'rgba(46,204,113,0.12)',color:C.green,border:`1px solid ${C.green}44`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            <span style={{fontSize:'1.4rem'}}>👨‍🍳</span>
+            <div><div>Тогооч / Зөөгч</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Ажилтны PIN код</div></div>
+          </button>
+        </div>}
+
+        {/* ── MANAGER AUTH ── */}
+        {mode==='manager'&&<>
+          {/* Step 1: License key */}
+          {mStep==='key'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
+            <div style={{background:`${C.yellow}15`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.yellow}33`}}>
+              <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:'0 0 0.15rem',letterSpacing:'0.04em'}}>🔑 ЛИЦЕНЗИЙН ТҮЛХҮҮР</p>
+              <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>Системийн администратораас авсан түлхүүрийг оруулна уу</p>
+            </div>
+            <input value={licKey} onChange={e=>setLicKey(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&checkLicKey()}
+              placeholder="RES-XXXX-XXXX-XXXX" style={{...IS,fontFamily:'monospace',fontSize:'0.95rem',letterSpacing:'0.06em',textAlign:'center' as const}}/>
+            {savedKey&&licKey===savedKey&&<p style={{color:C.green,fontSize:'0.72rem',margin:0,textAlign:'center' as const}}>✓ Энэ төхөөрөмжид хадгалагдсан түлхүүр</p>}
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
+            <button onClick={checkLicKey} disabled={loading||!licKey.trim()} style={{padding:'0.875rem',background:licKey.trim()?C.orange:C.inpBg,color:licKey.trim()?'white':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
+              {loading?'Шалгаж байна...':'Үргэлжлүүлэх →'}
+            </button>
+            <button onClick={()=>{setMode('select');setError('');setLicKey(savedKey||'');setMStep('key');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+          </div>}
+
+          {/* Step 2a: Create password (first time) */}
+          {mStep==='create'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
+            <div style={{background:`${C.green}12`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.green}33`,marginBottom:'0.25rem'}}>
+              <p style={{color:C.green,fontSize:'0.78rem',fontWeight:'800',margin:'0 0 0.1rem'}}>✅ Түлхүүр баталгаажлаа!</p>
+              <p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>{mBranchName} — Анх удаа нэвтрэж байна. Нууц үгээ үүсгэнэ үү.</p>
+            </div>
+            <input type="password" value={mPass} onChange={e=>setMPass(e.target.value)} placeholder="Нууц үг (6+ тэмдэгт)" style={IS}/>
+            <input type="password" value={mPass2} onChange={e=>setMPass2(e.target.value)} onKeyDown={e=>e.key==='Enter'&&createPassword()} placeholder="Нууц үг давтах" style={IS}/>
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
+            <button onClick={createPassword} disabled={loading||!mPass||!mPass2} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
+              {loading?'Үүсгэж байна...':'🔐 Нууц үг үүсгэж нэвтрэх'}
+            </button>
+            <button onClick={()=>{setMStep('key');setError('');setMPass('');setMPass2('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+          </div>}
+
+          {/* Step 2b: Enter password (returning) */}
+          {mStep==='login'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
+            <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,marginBottom:'0.25rem'}}>
+              <p style={{color:C.yellow,fontSize:'0.78rem',fontWeight:'800',margin:'0 0 0.1rem'}}>{mBranchName}</p>
+              <p style={{color:C.muted,fontSize:'0.72rem',margin:0,fontFamily:'monospace'}}>{licKey}</p>
+            </div>
+            <input type="password" value={mPass} onChange={e=>setMPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&loginWithKey()} placeholder="Нууц үг" style={IS} autoFocus/>
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
+            <button onClick={loginWithKey} disabled={loading||!mPass} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
+              {loading?'Нэвтэрч байна...':'🔓 Нэвтрэх'}
+            </button>
+            <button onClick={()=>{setMStep('key');setError('');setMPass('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Өөр түлхүүр оруулах</button>
+          </div>}
+        </>}
+
+        {/* ── STAFF AUTH ── */}
+        {mode==='staff'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
+          <div style={{background:`${C.green}12`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.6rem 0.875rem',textAlign:'center' as const,fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>
+            👨‍🍳 Ажилтан нэвтрэх
+          </div>
+          <CSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
+          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginStaff()} placeholder="PIN код" style={IS}/>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
+          <button onClick={loginStaff} disabled={loading} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'Нэвтрэх'}</button>
+          <button onClick={()=>{setMode('select');setError('');setPin('');setBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+
 function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSuccess:(lic:LicenseCheck)=>void;onBack:()=>void}) {
   const [key,setKey]=useState('');
   const [loading,setLoading]=useState(false);
@@ -251,65 +423,6 @@ function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSucc
   );
 }
 
-function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
-  const [branches,setBranches]=useState<Branch[]>([]);
-  const [mode,setMode]=useState<'select'|'manager'|'staff'|'new'>('select');
-  const [branchId,setBranchId]=useState('');
-  const [pin,setPin]=useState('');
-  const [error,setError]=useState('');
-  const [loading,setLoading]=useState(false);
-  const [n,setN]=useState({name:'',addr:'',pin:''});
-  useEffect(()=>{getAllBranches().then(setBranches);},[]);
-
-  const login=async(type:'manager'|'staff')=>{
-    if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
-    setLoading(true);
-    if(type==='manager'){const ok=await verifyManagerPin(branchId,pin);setLoading(false);if(!ok)return setError('PIN буруу');return onManager(branchId);}
-    const s=await verifyStaffPin(branchId,pin);setLoading(false);if(!s)return setError('PIN буруу');return onStaff(branchId,s);
-  };
-  const create=async()=>{
-    if(!n.name||!n.pin||n.pin.length<4)return setError('Нэр болон 4+ PIN шаардлагатай');
-    setLoading(true);
-    try{
-      const id=await createBranch(n.name,n.addr,n.pin);
-      for(const item of SEED)await addMenuItem(id,item);
-      let so=0;for(const nm of SEED_CATS){await saveCategory(id,nm);so++;}
-      await setTablesDB(id,5);onManager(id);
-    }catch{setError('Алдаа гарлаа');setLoading(false);}
-  };
-  return(
-    <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div style={{width:'100%',maxWidth:'380px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
-        <div style={{textAlign:'center',marginBottom:'2rem'}}>
-          <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
-          <h1 style={{fontSize:'1.4rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
-          <p style={{color:C.muted,fontSize:'0.8rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
-        </div>
-        {mode==='select'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👔 Менежер нэвтрэх</button>
-          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'#1a5c3a',color:C.green,border:`1px solid ${C.green}`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👨‍🍳 Тогооч / Зөөгч</button>
-          <button onClick={()=>setMode('new')} style={{padding:'0.875rem',background:'transparent',border:`1px dashed ${C.border}`,borderRadius:'14px',color:C.muted,fontWeight:'600',cursor:'pointer'}}>➕ Шинэ салбар үүсгэх</button>
-        </div>}
-        {(mode==='manager'||mode==='staff')&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
-          <div style={{background:`${mode==='manager'?C.orange:C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>{mode==='manager'?'👔 Менежер':'👨‍🍳 Ажилтан'}</div>
-          <CSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
-          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&login(mode)} placeholder="PIN оруулна уу" style={IS}/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-          <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтрэж байна...':'Нэвтрэх'}</button>
-          <button onClick={()=>{setMode('select');setError('');setPin('');setBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-        </div>}
-        {mode==='new'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
-          <input value={n.name} onChange={e=>setN(v=>({...v,name:e.target.value}))} placeholder="Салбарын нэр *" style={IS}/>
-          <input value={n.addr} onChange={e=>setN(v=>({...v,addr:e.target.value}))} placeholder="Хаяг" style={IS}/>
-          <input type="password" value={n.pin} onChange={e=>setN(v=>({...v,pin:e.target.value}))} placeholder="Менежерийн PIN (4+) *" style={IS}/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-          <button onClick={create} disabled={loading} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Үүсгэж байна...':'✅ Салбар үүсгэх'}</button>
-          <button onClick={()=>{setMode('select');setError('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-        </div>}
-      </div>
-    </div>
-  );
-}
 
 function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:number;onClose:()=>void}) {
   const [sc,setSc]=useState<Record<SK,number>>({foodQuality:0,ambiance:0,staffAttitude:0,priceValue:0,service:0});
