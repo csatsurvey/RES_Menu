@@ -795,3 +795,7 @@ export const getBranchIdByLicense = async (licKey: string): Promise<string | nul
   const snap = await get(ref(db, `licenses/${licKey}/branchId`));
   return snap.exists() ? snap.val() : null;
 };
+
+export const updateBranchName = async (branchId: string, name: string): Promise<void> => {
+  await update(ref(db, `branches/${branchId}`), { name });
+};
