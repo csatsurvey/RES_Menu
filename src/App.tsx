@@ -87,7 +87,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   const [pin,setPin]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-  useEffect(()=>{getAllBranches().then(setBranches);},[]);
+  useEffect(()=>{getAllBranches().then(all=>setBranches(all.filter(b=>(b as any).licenseKey)));},[]);
 
   const login=async(type:'manager'|'staff')=>{
     if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
