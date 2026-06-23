@@ -10,9 +10,6 @@ import {
   getStaff, addStaff, removeStaff, updateStaff,
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
-  getBranchLicenseStatus, LicenseCheck,
-  getLicense, checkLicenseStatus,
-  getManagerPassword, setManagerPassword, getBranchIdByLicense, setBranchLicense, updateBranchName,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -44,13 +41,6 @@ const KEYS = ['foodQuality','ambiance','staffAttitude','priceValue','service'] a
 type SK = typeof KEYS[number];
 
 
-
-// ── Password hash (SHA-256 via Web Crypto) ────────────────
-async function sha256(str: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-
 function Toggle({on,onChange}:{on:boolean;onChange:(v:boolean)=>void}) {
   return <button onClick={()=>onChange(!on)} style={{width:'44px',height:'24px',borderRadius:'12px',border:'none',cursor:'pointer',position:'relative',background:on?C.green:'rgba(255,255,255,0.15)',transition:'background 0.2s',padding:0,flexShrink:0}}>
     <span style={{position:'absolute',top:'2px',left:on?'22px':'2px',width:'20px',height:'20px',borderRadius:'50%',background:'white',transition:'left 0.2s',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}/>
@@ -73,354 +63,77 @@ function CSelect({value,onChange,options,placeholder,style}:{value:string;onChan
   </div>;
 }
 
-// ════════════════════════════════════════════════════════════
-// ERROR BOUNDARY - catches runtime errors and shows them
-// ════════════════════════════════════════════════════════════
-interface EBState { error: string|null }
-class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> {
-  state: EBState = {error:null};
-  static getDerivedStateFromError(e:Error): EBState {return{error:e.message+'\n'+e.stack};}
-  componentDidCatch(e:Error,info:any){console.error('App Error:',e,info);}
-  render(){
-    const {error}=this.state;
-    if(error){
-      return(
-        <div style={{minHeight:'100vh',background:'#0d0d12',display:'flex',alignItems:'center',justifyContent:'center',padding:'2rem'}}>
-          <div style={{background:'#1a1a22',borderRadius:'16px',padding:'2rem',maxWidth:'700px',width:'100%',border:'1px solid rgba(231,76,60,0.4)'}}>
-            <h2 style={{color:'#E74C3C',margin:'0 0 1rem',fontSize:'1.1rem'}}>🚨 Runtime Error — надад screenshot илгээнэ үү</h2>
-            <pre style={{color:'rgba(255,255,255,0.8)',fontSize:'0.75rem',background:'rgba(0,0,0,0.4)',padding:'1rem',borderRadius:'8px',overflow:'auto',maxHeight:'400px',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-              {error}
-            </pre>
-            <button onClick={()=>window.location.reload()} style={{marginTop:'1rem',padding:'0.6rem 1.5rem',background:'#E87B2F',color:'white',border:'none',borderRadius:'8px',cursor:'pointer',fontWeight:'700'}}>
-              🔄 Дахин ачаалах
-            </button>
-          </div>
-        </div>
-      );
-    }
-    // @ts-ignore
-    return this.props.children;
-  }
-}
-
-function AppInner() {
+export default function App() {
   const [view,setView]=useState<'landing'|'customer'|'admin'>('landing');
   const [branchId,setBranchId]=useState('');
   const [tableNum,setTableNum]=useState(0);
   const [isManager,setIsManager]=useState(false);
   const [staff,setStaff]=useState<Staff|null>(null);
-  const [license,setLicense]=useState<LicenseCheck|null>(null);
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
   },[]);
-  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);localStorage.removeItem('rms_licKey');};
-  // Fetch license when entering admin view
-  const [licLoading,setLicLoading]=useState(false);
-  const goAdmin=async(id:string,isMan:boolean,s:Staff|null,preloadedLic?:LicenseCheck|null)=>{
-    if(isMan){setIsManager(true);}else{setStaff(s);}
-    setBranchId(id);
-    setLicLoading(true);
-    const lic=await getBranchLicenseStatus(id);
-    setLicense(lic);
-    setLicLoading(false);
-    if(lic.status==='none'&&isMan){
-      // No license linked yet — go to activation screen
-      setView('activate');
-    } else {
-      setView('admin');
-    }
-  };
+  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);};
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
-
-  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} licLoading={licLoading} onLogout={logout}/>;
-  return <LandingView onManager={(id,lic)=>{setIsManager(true);setBranchId(id);setLicense(lic);setView('admin');}} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
+  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} onLogout={logout}/>;
+  return <LandingView onManager={id=>{setBranchId(id);setIsManager(true);setView('admin');}} onStaff={(id,s)=>{setBranchId(id);setStaff(s);setView('admin');}}/>;
 }
 
-
-// ════════════════════════════════════════════════════════════
-// LICENSE ACTIVATE VIEW
-// ════════════════════════════════════════════════════════════
-function LandingView({onManager,onStaff}:{onManager:(id:string,lic:LicenseCheck)=>void;onStaff:(id:string,s:Staff)=>void}) {
+function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
   const [branches,setBranches]=useState<Branch[]>([]);
   const [mode,setMode]=useState<'select'|'manager'|'staff'>('select');
-  // Manager auth states
-  const [licKey,setLicKey]=useState('');
-  const [mStep,setMStep]=useState<'key'|'create'|'login'>('key');
-  const [mPass,setMPass]=useState('');
-  const [mPass2,setMPass2]=useState('');
-  const [mBranchName,setMBranchName]=useState('');
-  // Staff states
   const [branchId,setBranchId]=useState('');
   const [pin,setPin]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
+  useEffect(()=>{getAllBranches().then(setBranches);},[]);
 
-  useEffect(()=>{
-    getAllBranches().then(setBranches);
-    // Check localStorage for saved license key (same device auto-fill)
-    const saved=localStorage.getItem('rms_licKey');
-    if(saved){setLicKey(saved);}
-  },[]);
-
-  // ── MANAGER: Check license key ─────────────────────────
-  const checkLicKey=async()=>{
-    const k=licKey.trim().toUpperCase();
-    if(!k){return setError('Лицензийн түлхүүр оруулна уу');}
-    setLoading(true);setError('');
-    try{
-      const lic=await getLicense(k);
-      if(!lic){setLoading(false);return setError('Түлхүүр олдсонгүй. Зөв оруулсан эсэхийг шалгана уу.');}
-      const chk=checkLicenseStatus(lic);
-      if(!chk.valid){setLoading(false);return setError(chk.message);}
-      const existingPwd=await getManagerPassword(k);
-      setMBranchName(lic.branchName||'');
-      if(existingPwd){setMStep('login');}
-      else{setMStep('create');}
-    }catch(e){setError('Алдаа: '+String(e));}
-    setLoading(false);
-  };
-
-  // ── MANAGER: Create password (first time) ─────────────
-  const createPassword=async()=>{
-    if(mPass.length<6){return setError('Нууц үг дор хаяж 6 тэмдэгт байх ёстой');}
-    if(mPass!==mPass2){return setError('Нууц үг таарахгүй байна');}
-    setLoading(true);setError('');
-    try{
-      const hash=await sha256(mPass);
-      await setManagerPassword(licKey.trim().toUpperCase(),hash);
-      await loginWithKey();
-    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
-  };
-
-  // ── MANAGER: Login with password ──────────────────────
-  const loginWithKey=async()=>{
-    setLoading(true);setError('');
-    try{
-      const k=licKey.trim().toUpperCase();
-      const hash=await sha256(mPass);
-      const storedHash=await getManagerPassword(k);
-      if(storedHash&&storedHash!==hash){setLoading(false);return setError('Нууц үг буруу байна.');}
-      const brId=await getBranchIdByLicense(k);
-      if(!brId){setLoading(false);return setError('Энэ лицензт салбар холбоогүй байна. Системийн админтай холбоо барина уу.');}
-      localStorage.setItem('rms_licKey',k);
-      const lic=await getBranchLicenseStatus(brId);
-      onManager(brId,lic);
-    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
-  };
-
-  // ── STAFF login (unchanged) ────────────────────────────
-  const loginStaff=async()=>{
+  const login=async(type:'manager'|'staff')=>{
     if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
     setLoading(true);
+    if(type==='manager'){
+      const ok=await verifyManagerPin(branchId,pin);
+      setLoading(false);
+      return ok?onManager(branchId):setError('PIN буруу байна');
+    }
     const s=await verifyStaffPin(branchId,pin);
     setLoading(false);
     return s?onStaff(branchId,s):setError('PIN буруу байна');
   };
 
-  const savedKey=localStorage.getItem('rms_licKey');
-
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div style={{width:'100%',maxWidth:'400px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
+      <div style={{width:'100%',maxWidth:'380px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
         <div style={{textAlign:'center',marginBottom:'1.75rem'}}>
           <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
           <h1 style={{fontSize:'1.35rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
           <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
         </div>
-
         {mode==='select'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <button onClick={()=>{setMode('manager');if(savedKey)setLicKey(savedKey);}} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
+          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
             <span style={{fontSize:'1.4rem'}}>👔</span>
-            <div><div>Менежер нэвтрэх</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Лицензийн түлхүүр + нууц үг</div></div>
+            <div><div>Менежер нэвтрэх</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Менежерийн PIN код</div></div>
           </button>
           <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'rgba(46,204,113,0.12)',color:C.green,border:`1px solid ${C.green}44`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
             <span style={{fontSize:'1.4rem'}}>👨‍🍳</span>
             <div><div>Тогооч / Зөөгч</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Ажилтны PIN код</div></div>
           </button>
         </div>}
-
-        {/* ── MANAGER AUTH ── */}
-        {mode==='manager'&&<>
-          {/* Step 1: License key */}
-          {mStep==='key'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-            <div style={{background:`${C.yellow}15`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.yellow}33`}}>
-              <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:'0 0 0.15rem',letterSpacing:'0.04em'}}>🔑 ЛИЦЕНЗИЙН ТҮЛХҮҮР</p>
-              <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>Системийн администратораас авсан түлхүүрийг оруулна уу</p>
-            </div>
-            <input value={licKey} onChange={e=>setLicKey(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&checkLicKey()}
-              placeholder="RES-XXXX-XXXX-XXXX" style={{...IS,fontFamily:'monospace',fontSize:'0.95rem',letterSpacing:'0.06em',textAlign:'center' as const}}/>
-            {savedKey&&licKey===savedKey&&<p style={{color:C.green,fontSize:'0.72rem',margin:0,textAlign:'center' as const}}>✓ Энэ төхөөрөмжид хадгалагдсан түлхүүр</p>}
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-            <button onClick={checkLicKey} disabled={loading||!licKey.trim()} style={{padding:'0.875rem',background:licKey.trim()?C.orange:C.inpBg,color:licKey.trim()?'white':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
-              {loading?'Шалгаж байна...':'Үргэлжлүүлэх →'}
-            </button>
-            <button onClick={()=>{setMode('select');setError('');setLicKey(savedKey||'');setMStep('key');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-          </div>}
-
-          {/* Step 2a: Create password (first time) */}
-          {mStep==='create'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-            <div style={{background:`${C.green}12`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.green}33`,marginBottom:'0.25rem'}}>
-              <p style={{color:C.green,fontSize:'0.78rem',fontWeight:'800',margin:'0 0 0.1rem'}}>✅ Түлхүүр баталгаажлаа!</p>
-              <p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>{mBranchName} — Анх удаа нэвтрэж байна. Нууц үгээ үүсгэнэ үү.</p>
-            </div>
-            <input type="password" value={mPass} onChange={e=>setMPass(e.target.value)} placeholder="Нууц үг (6+ тэмдэгт)" style={IS}/>
-            <input type="password" value={mPass2} onChange={e=>setMPass2(e.target.value)} onKeyDown={e=>e.key==='Enter'&&createPassword()} placeholder="Нууц үг давтах" style={IS}/>
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-            <button onClick={createPassword} disabled={loading||!mPass||!mPass2} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
-              {loading?'Үүсгэж байна...':'🔐 Нууц үг үүсгэж нэвтрэх'}
-            </button>
-            <button onClick={()=>{setMStep('key');setError('');setMPass('');setMPass2('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-          </div>}
-
-          {/* Step 2b: Enter password (returning) */}
-          {mStep==='login'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-            <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`,marginBottom:'0.25rem'}}>
-              <p style={{color:C.yellow,fontSize:'0.78rem',fontWeight:'800',margin:'0 0 0.1rem'}}>{mBranchName}</p>
-              <p style={{color:C.muted,fontSize:'0.72rem',margin:0,fontFamily:'monospace'}}>{licKey}</p>
-            </div>
-            <input type="password" value={mPass} onChange={e=>setMPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&loginWithKey()} placeholder="Нууц үг" style={IS} autoFocus/>
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-            <button onClick={loginWithKey} disabled={loading||!mPass} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
-              {loading?'Нэвтэрч байна...':'🔓 Нэвтрэх'}
-            </button>
-            <button onClick={()=>{setMStep('key');setError('');setMPass('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Өөр түлхүүр оруулах</button>
-          </div>}
-        </>}
-
-        {/* ── STAFF AUTH ── */}
-        {mode==='staff'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
-          <div style={{background:`${C.green}12`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.6rem 0.875rem',textAlign:'center' as const,fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>
-            👨‍🍳 Ажилтан нэвтрэх
+        {(mode==='manager'||mode==='staff')&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
+          <div style={{background:mode==='manager'?`${C.orange}22`:`${C.green}12`,borderRadius:'10px',padding:'0.6rem 0.875rem',border:`1px solid ${mode==='manager'?`${C.orange}44`:`${C.green}33`}`,textAlign:'center' as const,fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>
+            {mode==='manager'?'👔 Менежер':'👨‍🍳 Ажилтан'}
           </div>
-          <CSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
-          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginStaff()} placeholder="PIN код" style={IS}/>
+          <CSelect value={branchId} onChange={v=>{setBranchId(v);setError('');}} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
+          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&login(mode)} placeholder="PIN код" style={IS} autoFocus/>
           {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-          <button onClick={loginStaff} disabled={loading} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'Нэвтрэх'}</button>
+          <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'Нэвтрэх'}</button>
           <button onClick={()=>{setMode('select');setError('');setPin('');setBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
       </div>
     </div>
   );
 }
-
-
-function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSuccess:(lic:LicenseCheck)=>void;onBack:()=>void}) {
-  const [key,setKey]=useState('');
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState('');
-  const [step,setStep]=useState<'enter'|'confirm'|'done'>('enter');
-  const [preview,setPreview]=useState<LicenseCheck|null>(null);
-
-  const verify=async()=>{
-    const k=key.trim().toUpperCase();
-    if(!k){return setError('Лицензийн түлхүүр оруулна уу');}
-    setLoading(true);setError('');
-    try{
-      const snap=await getLicense(k);
-      if(!snap){setError('Түлхүүр олдсонгүй. Зөв оруулсан эсэхийг шалгана уу.');setLoading(false);return;}
-      if((snap as any).branchId&&(snap as any).branchId!==branchId){
-        setError('Энэ түлхүүр өөр салбарт холбогдсон байна.');setLoading(false);return;
-      }
-      const check=checkLicenseStatus(snap);
-      if(!check.valid){setError(check.message);setLoading(false);return;}
-      setPreview(check);
-      setStep('confirm');
-    }catch(e){setError('Алдаа гарлаа: '+String(e));}
-    setLoading(false);
-  };
-
-  const activate=async()=>{
-    setLoading(true);
-    try{
-      await setBranchLicense(branchId,key.trim().toUpperCase());
-      const lic=await getBranchLicenseStatus(branchId);
-      setStep('done');
-      setTimeout(()=>onSuccess(lic),1500);
-    }catch(e){setError('Идэвхжүүлэхэд алдаа: '+String(e));}
-    setLoading(false);
-  };
-
-  return(
-    <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div style={{width:'100%',maxWidth:'420px'}}>
-        {/* Header */}
-        <div style={{textAlign:'center',marginBottom:'2rem'}}>
-          <div style={{fontSize:'2.5rem',marginBottom:'0.75rem'}}>{step==='done'?'🎉':'🔑'}</div>
-          <h1 style={{color:C.yellow,fontWeight:'800',fontSize:'1.25rem',margin:'0 0 0.25rem',letterSpacing:'0.04em'}}>
-            {step==='enter'?'ЛИЦЕНЗ ИДЭВХЖҮҮЛЭХ':step==='confirm'?'БАТАЛГААЖУУЛАХ':'АМЖИЛТТАЙ!'}
-          </h1>
-          <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>
-            {step==='enter'?'Лицензийн түлхүүрээ оруулна уу':step==='confirm'?'Доорх мэдээллийг шалгаад баталгаажуулна уу':'Лиценз идэвхжлээ. Системд орж байна...'}
-          </p>
-        </div>
-
-        <div style={{background:C.card,borderRadius:'20px',padding:'1.75rem',border:`1px solid ${C.border}`}}>
-          {step==='enter'&&<>
-            <div style={{marginBottom:'1rem'}}>
-              <label style={{color:C.muted,fontSize:'0.7rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,display:'block',marginBottom:'0.4rem'}}>ЛИЦЕНЗИЙН ТҮЛХҮҮР</label>
-              <input
-                value={key}
-                onChange={e=>setKey(e.target.value.toUpperCase())}
-                onKeyDown={e=>e.key==='Enter'&&verify()}
-                placeholder="RES-XXXX-XXXX-XXXX"
-                style={{...IS,fontFamily:'monospace',fontSize:'1rem',letterSpacing:'0.08em',textAlign:'center' as const}}
-                autoFocus
-              />
-              <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.4rem 0 0'}}>Жишээ: RES-A1B2-C3D4-E5F6</p>
-            </div>
-            {error&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}33`,borderRadius:'8px',padding:'0.65rem',marginBottom:'0.875rem'}}>
-              <p style={{color:C.red,fontSize:'0.82rem',margin:0,fontWeight:'600'}}>{error}</p>
-            </div>}
-            <button onClick={verify} disabled={loading||!key.trim()}
-              style={{width:'100%',padding:'0.9rem',background:key.trim()?C.orange:C.inpBg,color:key.trim()?'white':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.95rem',opacity:loading?0.7:1}}>
-              {loading?'Шалгаж байна...':'✓ Шалгах'}
-            </button>
-            <button onClick={onBack} style={{width:'100%',marginTop:'0.6rem',padding:'0.7rem',background:'transparent',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>
-              ← Буцах
-            </button>
-          </>}
-
-          {step==='confirm'&&preview&&<>
-            {/* License preview */}
-            <div style={{background:C.inpBg,borderRadius:'12px',padding:'1rem',marginBottom:'1.25rem',border:`1px solid ${C.border}`}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.6rem'}}>
-                <span style={{color:C.muted,fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const}}>Лицензийн мэдээлэл</span>
-                <span style={{padding:'0.2rem 0.6rem',borderRadius:'20px',fontSize:'0.72rem',fontWeight:'700',background:preview.status==='trial'?`${C.yellow}22`:`${C.green}22`,color:preview.status==='trial'?C.yellow:C.green}}>
-                  {preview.status==='trial'?'Туршилт':'Төлсөн'}
-                </span>
-              </div>
-              <p style={{color:C.yellow,fontFamily:'monospace',fontSize:'0.9rem',fontWeight:'700',margin:'0 0 0.5rem',letterSpacing:'0.06em'}}>{key.trim().toUpperCase()}</p>
-              <p style={{color:preview.status==='trial'?C.yellow:C.green,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.25rem'}}>{preview.message}</p>
-              {preview.license&&<>
-                <p style={{color:C.muted,fontSize:'0.78rem',margin:'0.25rem 0 0'}}>Эзэмшигч: {preview.license.ownerName}</p>
-                <p style={{color:C.muted,fontSize:'0.78rem',margin:'0.2rem 0 0'}}>Дуусах: {new Date(preview.license.endDate).toLocaleDateString('mn-MN')}</p>
-              </>}
-            </div>
-            {error&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}33`,borderRadius:'8px',padding:'0.65rem',marginBottom:'0.875rem'}}>
-              <p style={{color:C.red,fontSize:'0.82rem',margin:0}}>{error}</p>
-            </div>}
-            <div style={{display:'flex',gap:'0.6rem'}}>
-              <button onClick={()=>{setStep('enter');setError('');}} style={{padding:'0.75rem 1.25rem',background:'transparent',border:`1px solid ${C.border}`,borderRadius:'10px',color:C.muted,fontWeight:'700',cursor:'pointer'}}>← Буцах</button>
-              <button onClick={activate} disabled={loading}
-                style={{flex:1,padding:'0.75rem',background:C.green,color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>
-                {loading?'Идэвхжүүлж байна...':'🚀 Идэвхжүүлэх'}
-              </button>
-            </div>
-          </>}
-
-          {step==='done'&&<div style={{textAlign:'center' as const,padding:'1.5rem 0'}}>
-            <div style={{fontSize:'3rem',marginBottom:'0.75rem'}}>✅</div>
-            <p style={{color:C.green,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.25rem'}}>Амжилттай идэвхжлээ!</p>
-            <p style={{color:C.muted,fontSize:'0.82rem'}}>Системд орж байна...</p>
-          </div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:number;onClose:()=>void}) {
   const [sc,setSc]=useState<Record<SK,number>>({foodQuality:0,ambiance:0,staffAttitude:0,priceValue:0,service:0});
@@ -1001,7 +714,7 @@ function StaffEditModal({branchId,s,onClose,onSaved}:{branchId:string;s:Staff;on
 }
 
 function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
-  const [top,setTop]=useState('');
+  const [top,setTop]=useState('МЕНЮ');
   const [bot,setBot]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
   const [qs,setQs]=useState(DEF_Q);
   const [tc,setTc]=useState(String(tables.length||5));
@@ -1010,22 +723,11 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   const [logo,setLogo]=useState('');
   const [saved,setSaved]=useState(false);
   const [nameSaved,setNS]=useState(false);
-  const [logoSaved,setLS]=useState(false);
-  const showLogoSaved=()=>{setLS(true);setTimeout(()=>setLS(false),2000);};
   const [loading,setLoading]=useState(false);
   const [qrT,setQrT]=useState<number|null>(null);
   const lRef=useRef<HTMLInputElement>(null);
   useEffect(()=>{setTc(String(tables.length||5));},[tables.length]);
-  useEffect(()=>{
-    // Load branch name first
-    getBranch(branchId).then(b=>{if(b?.name)setTop(prev=>prev||b.name);});
-    getSettings(branchId).then(s=>{
-      if(s.qrTopText)setTop(s.qrTopText);
-      if(s.qrBottomText)setBot(s.qrBottomText);
-      if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);
-      if((s as any).brandLogo)setLogo((s as any).brandLogo);
-    });
-  },[branchId]);
+  useEffect(()=>{getSettings(branchId).then(s=>{if(s.qrTopText)setTop(s.qrTopText);if(s.qrBottomText)setBot(s.qrBottomText);if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);if((s as any).brandLogo)setLogo((s as any).brandLogo);});},[branchId]);
   const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c"><div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
   return(
@@ -1034,12 +736,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
         <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>🏷️ РЕСТОРАН/САЛБАРЫН НЭР</p>
         <div style={{display:'flex',gap:'0.5rem'}}>
           <input value={top} onChange={e=>setTop(e.target.value)} placeholder="Ресторан нэр" style={{...IS,flex:1}}/>
-          <button onClick={async()=>{
-            if(!top.trim())return;
-            await saveSettings(branchId,{qrTopText:top} as any);
-            await updateBranchName(branchId,top);
-            setNS(true);setTimeout(()=>setNS(false),2000);
-          }} style={{padding:'0.5rem 1rem',background:nameSaved?C.green:C.orange,border:'none',borderRadius:'8px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',flexShrink:0,transition:'background 0.2s'}}>{nameSaved?'✓ Хадгалагдлаа':'Хадгалах'}</button>
+          <button onClick={async()=>{await saveSettings(branchId,{qrTopText:top} as any);setNS(true);setTimeout(()=>setNS(false),2000);}} style={{padding:'0.5rem 1rem',background:nameSaved?C.green:C.orange,border:'none',borderRadius:'8px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',flexShrink:0,transition:'background 0.2s'}}>{nameSaved?'✓ Хадгалагдлаа':'Хадгалах'}</button>
         </div>
         <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.25rem 0 0'}}>QR хэвлэлт болон sidebar-д харагдана</p>
       </div>
@@ -1047,7 +744,6 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
         <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>🖼️ БАЙГУУЛЛАГЫН ЛОГО</p>
         {logo?<div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.5rem'}}>
           <img src={logo} alt="logo" style={{width:'64px',height:'64px',borderRadius:'10px',objectFit:'cover',border:`1px solid ${C.border}`}}/>
-          <button onClick={async()=>{await saveSettings(branchId,{brandLogo:logo} as any);showLogoSaved();}} style={{padding:'0.35rem 0.875rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,color:C.green,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>💾 Хадгалах</button>
           <button onClick={()=>setLogo('')} style={{padding:'0.35rem 0.75rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>✕ Устгах</button>
         </div>
         :<div onClick={()=>lRef.current?.click()} style={{height:'64px',border:`2px dashed ${C.border}`,borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:'0.5rem',marginBottom:'0.5rem'}} onMouseOver={e=>{e.currentTarget.style.borderColor=C.yellow;}} onMouseOut={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.08)';}}>
@@ -1104,41 +800,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   );
 }
 
-
-function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;onLog:(a:string,d:string)=>void}) {
-  const [note,setNote]=useState('');
-  const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
-  return(
-    <div style={{...CS,padding:'1.25rem'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
-        <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
-        {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
-      </div>
-      <div style={{marginBottom:'0.75rem'}}>
-        {QS.filter(q=>(s as any)[q.k]).map(q=>(
-          <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-            <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
-            <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
-          </div>
-        ))}
-        <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
-          <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
-          <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
-        </div>
-      </div>
-      {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
-      {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
-        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
-        <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);onLog('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
-      </div>}
-      {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
-        {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
-        <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
-      </div>}
-    </div>
-  );
-}
-function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;licLoading?:boolean;onLogout:()=>void}) {
+function AdminPanel({branchId,isManager,staff,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -1195,7 +857,39 @@ function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{bran
   const [cTab,setCTab]=useState<'p'|'r'|'a'>('p');
   const cpd=wPhone.filter(s=>!s.resolved),crs=wPhone.filter(s=>s.resolved),can=surveys.filter(s=>!s.phone||!s.phone.trim());
 
-  // SCard is defined outside AdminPanel (see below)
+  function SCard({s,sa}:{s:Survey;sa:boolean}) {
+    const [note,setNote]=useState('');
+    const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
+    return(
+      <div style={{...CS,padding:'1.25rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
+          <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
+          {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
+        </div>
+        <div style={{marginBottom:'0.75rem'}}>
+          {QS.filter(q=>(s as any)[q.k]).map(q=>(
+            <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+              <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
+              <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
+            </div>
+          ))}
+          <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
+            <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
+            <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
+          </div>
+        </div>
+        {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
+        {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+          <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
+          <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);logAct('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
+        </div>}
+        {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
+          {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
+          <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
+        </div>}
+      </div>
+    );
+  }
 
   const curSurveys=cTab==='p'?cpd:cTab==='r'?crs:can;
 
@@ -1213,26 +907,10 @@ function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{bran
             </button>
           ))}
         </nav>
-        {license!==null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.6rem 0.75rem',borderRadius:'8px',background:license.valid?(license.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${license.valid?(license.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
-          <p style={{color:license.valid?(license.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.75rem',fontWeight:'800',margin:0,lineHeight:1.3}}>{license.message||'Шалгаж байна...'}</p>
-        </div>}
-        {license===null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.5rem 0.65rem',borderRadius:'8px',background:`${C.yellow}18`,border:`1px solid ${C.yellow}33`}}>
-          <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:0}}>⏳ Лиценз шалгаж байна...</p>
-        </div>}
-        <button onClick={onLogout} style={{margin:'0.5rem 1rem 1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
+        <button onClick={onLogout} style={{margin:'1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
       </div>
       <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto' as const,minWidth:0}}>
         <div style={{maxWidth:'960px',margin:'0 auto'}}>
-        {(license!==null&&!license.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
-          <div style={{fontSize:'3.5rem',marginBottom:'1rem'}}>🔒</div>
-          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{license.message}</h2>
-          <p style={{color:C.muted,fontSize:'0.875rem',marginBottom:'1.5rem'}}>
-            {license.status==='none'?'Энэ салбарт лиценз холбоогүй байна.':license.status==='blocked'?'Лиценз хаагдсан. Эзэмшигчтэй холбоо барина уу.':'Лицензийн хугацаа дууссан. Эзэмшигчтэй холбоо барина уу.'}
-          </p>
-          {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
-        </div>}
-        {licLoading&&<div style={{textAlign:'center' as const,padding:'5rem 2rem'}}><div style={{fontSize:'2rem',marginBottom:'1rem'}}>⏳</div><p style={{color:C.muted,fontWeight:'700'}}>Лиценз шалгаж байна...</p></div>}
-        {!licLoading&&license!==null&&license.valid&&<>
 
           {tab==='dashboard'&&<>
             <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
@@ -1277,7 +955,7 @@ function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{bran
                 </button>
               ))}
             </div>
-            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SurveyCard s={s} sa={cTab==='p'} branchId={branchId} onLog={(a,d)=>logAct(a,d)}/></div>)}
+            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SCard s={s} sa={cTab==='p'}/></div>)}
           </>}
 
           {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})} logAct={(a,d)=>logAct(a,d)}/>}
@@ -1324,9 +1002,9 @@ function AdminPanel({branchId,isManager,staff,license,licLoading,onLogout}:{bran
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables}/>}
           {tab==='logs'&&<LogsTab logs={logs}/>}
-        </>}
         </div>
       </div>
+
       {menuModal&&<MenuModal branchId={branchId} init={menuModal} cats={cats} onClose={()=>setMenuModal(null)}/>}
       {editStaff&&<StaffEditModal branchId={branchId} s={editStaff} onClose={()=>setEditStaff(null)} onSaved={()=>getStaff(branchId).then(setStaffList)}/>}
       {delTarget&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
@@ -1373,5 +1051,3 @@ function DashSales({branchId,fromMs}:{branchId:string;fromMs:number}) {
     </div>
   );
 }
-
-export default function App(){return<ErrorBoundary><AppInner/></ErrorBoundary>;}
