@@ -96,7 +96,7 @@ export const getAllBranches = async (): Promise<Branch[]> => {
   if (!snap.exists()) return [];
   return Object.entries(snap.val())
     .map(([id, val]: any) => ({ id, ...val }))
-    .filter((b: any) => b.name && b.name.trim().length > 0) // only branches with a name
+    .filter((b: any) => b.name && b.licenseKey) // only branches linked to a license
     .sort((a: any, b: any) => (b.createdAt||0) - (a.createdAt||0));
 };
 
