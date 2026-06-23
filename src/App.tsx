@@ -11,7 +11,8 @@ import {
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck,
-  getManagerPassword, setManagerPassword, getBranchIdByLicense,
+  getLicense, checkLicenseStatus,
+  getManagerPassword, setManagerPassword, getBranchIdByLicense, setBranchLicense,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -317,13 +318,11 @@ function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSucc
     if(!k){return setError('Лицензийн түлхүүр оруулна уу');}
     setLoading(true);setError('');
     try{
-      const snap=await import('./lib/db').then(m=>m.getLicense(k));
+      const snap=await getLicense(k);
       if(!snap){setError('Түлхүүр олдсонгүй. Зөв оруулсан эсэхийг шалгана уу.');setLoading(false);return;}
-      // Check if already used by another branch
       if((snap as any).branchId&&(snap as any).branchId!==branchId){
         setError('Энэ түлхүүр өөр салбарт холбогдсон байна.');setLoading(false);return;
       }
-      const {checkLicenseStatus}=await import('./lib/db');
       const check=checkLicenseStatus(snap);
       if(!check.valid){setError(check.message);setLoading(false);return;}
       setPreview(check);
@@ -335,7 +334,6 @@ function LicenseActivateView({branchId,onSuccess,onBack}:{branchId:string;onSucc
   const activate=async()=>{
     setLoading(true);
     try{
-      const {setBranchLicense,getBranchLicenseStatus}=await import('./lib/db');
       await setBranchLicense(branchId,key.trim().toUpperCase());
       const lic=await getBranchLicenseStatus(branchId);
       setStep('done');
