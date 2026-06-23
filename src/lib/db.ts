@@ -96,7 +96,8 @@ export const getAllBranches = async (): Promise<Branch[]> => {
   if (!snap.exists()) return [];
   return Object.entries(snap.val())
     .map(([id, val]: any) => ({ id, ...val }))
-    .filter((b: any) => b.name && b.managerPin); // only properly created branches
+    .filter((b: any) => b.name && b.name.trim().length > 0) // only branches with a name
+    .sort((a: any, b: any) => (b.createdAt||0) - (a.createdAt||0));
 };
 
 export const getBranch = async (branchId: string): Promise<Branch | null> => {
