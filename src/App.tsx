@@ -82,53 +82,58 @@ export default function App() {
 
 function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
   const [branches,setBranches]=useState<Branch[]>([]);
-  const [mode,setMode]=useState<'select'|'manager'|'staff'>('select');
+  const [mode,setMode]=useState<'select'|'manager'|'staff'|'new'>('select');
   const [branchId,setBranchId]=useState('');
   const [pin,setPin]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-  useEffect(()=>{getAllBranches().then(all=>setBranches(all.filter(b=>(b as any).licenseKey)));},[]);
+  const [n,setN]=useState({name:'',addr:'',pin:''});
+  useEffect(()=>{getAllBranches().then(all=>setBranches(all.filter((b:any)=>b.licenseKey)));},[]);
 
   const login=async(type:'manager'|'staff')=>{
     if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
     setLoading(true);
-    if(type==='manager'){
-      const ok=await verifyManagerPin(branchId,pin);
-      setLoading(false);
-      return ok?onManager(branchId):setError('PIN буруу байна');
-    }
-    const s=await verifyStaffPin(branchId,pin);
-    setLoading(false);
-    return s?onStaff(branchId,s):setError('PIN буруу байна');
+    if(type==='manager'){const ok=await verifyManagerPin(branchId,pin);setLoading(false);return ok?onManager(branchId):setError('PIN буруу');}
+    const s=await verifyStaffPin(branchId,pin);setLoading(false);return s?onStaff(branchId,s):setError('PIN буруу');
   };
-
+  const create=async()=>{
+    if(!n.name||!n.pin||n.pin.length<4)return setError('Нэр болон 4+ PIN шаардлагатай');
+    setLoading(true);
+    try{
+      const id=await createBranch(n.name,n.addr,n.pin);
+      for(const item of SEED)await addMenuItem(id,item);
+      let so=0;for(const nm of SEED_CATS){await saveCategory(id,nm);so++;}
+      await setTablesDB(id,5);onManager(id);
+    }catch{setError('Алдаа гарлаа');setLoading(false);}
+  };
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
       <div style={{width:'100%',maxWidth:'380px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
-        <div style={{textAlign:'center',marginBottom:'1.75rem'}}>
+        <div style={{textAlign:'center',marginBottom:'2rem'}}>
           <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
-          <h1 style={{fontSize:'1.35rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
-          <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
+          <h1 style={{fontSize:'1.4rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
+          <p style={{color:C.muted,fontSize:'0.8rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
         </div>
-        {mode==='select'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
-            <span style={{fontSize:'1.4rem'}}>👔</span>
-            <div><div>Менежер нэвтрэх</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Менежерийн PIN код</div></div>
-          </button>
-          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'rgba(46,204,113,0.12)',color:C.green,border:`1px solid ${C.green}44`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
-            <span style={{fontSize:'1.4rem'}}>👨‍🍳</span>
-            <div><div>Тогооч / Зөөгч</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Ажилтны PIN код</div></div>
-          </button>
+        {mode==='select'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👔 Менежер нэвтрэх</button>
+          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'#1a5c3a',color:C.green,border:`1px solid ${C.green}`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👨‍🍳 Тогооч / Зөөгч</button>
+          <button onClick={()=>setMode('new')} style={{padding:'0.875rem',background:'transparent',border:`1px dashed ${C.border}`,borderRadius:'14px',color:C.muted,fontWeight:'600',cursor:'pointer'}}>➕ Шинэ салбар үүсгэх</button>
         </div>}
-        {(mode==='manager'||mode==='staff')&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
-          <div style={{background:mode==='manager'?`${C.orange}22`:`${C.green}12`,borderRadius:'10px',padding:'0.6rem 0.875rem',border:`1px solid ${mode==='manager'?`${C.orange}44`:`${C.green}33`}`,textAlign:'center' as const,fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>
-            {mode==='manager'?'👔 Менежер':'👨‍🍳 Ажилтан'}
-          </div>
-          <CSelect value={branchId} onChange={v=>{setBranchId(v);setError('');}} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
-          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&login(mode)} placeholder="PIN код" style={IS} autoFocus/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-          <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'Нэвтрэх'}</button>
+        {(mode==='manager'||mode==='staff')&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <div style={{background:`${mode==='manager'?C.orange:C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>{mode==='manager'?'👔 Менежер':'👨‍🍳 Ажилтан'}</div>
+          <CSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
+          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&login(mode)} placeholder="PIN оруулна уу" style={IS}/>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+          <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтрэж байна...':'Нэвтрэх'}</button>
           <button onClick={()=>{setMode('select');setError('');setPin('');setBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+        </div>}
+        {mode==='new'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <input value={n.name} onChange={e=>setN(v=>({...v,name:e.target.value}))} placeholder="Салбарын нэр *" style={IS}/>
+          <input value={n.addr} onChange={e=>setN(v=>({...v,addr:e.target.value}))} placeholder="Хаяг" style={IS}/>
+          <input type="password" value={n.pin} onChange={e=>setN(v=>({...v,pin:e.target.value}))} placeholder="Менежерийн PIN (4+) *" style={IS}/>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+          <button onClick={create} disabled={loading} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Үүсгэж байна...':'✅ Салбар үүсгэх'}</button>
+          <button onClick={()=>{setMode('select');setError('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
       </div>
     </div>
