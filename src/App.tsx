@@ -12,7 +12,7 @@ import {
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck,
   getLicense, checkLicenseStatus,
-  getManagerPassword, setManagerPassword, getBranchIdByLicense, setBranchLicense,
+  getManagerPassword, setManagerPassword, getBranchIdByLicense, setBranchLicense, updateBranchName,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -1001,7 +1001,7 @@ function StaffEditModal({branchId,s,onClose,onSaved}:{branchId:string;s:Staff;on
 }
 
 function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
-  const [top,setTop]=useState('МЕНЮ');
+  const [top,setTop]=useState('');
   const [bot,setBot]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
   const [qs,setQs]=useState(DEF_Q);
   const [tc,setTc]=useState(String(tables.length||5));
@@ -1010,11 +1010,22 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   const [logo,setLogo]=useState('');
   const [saved,setSaved]=useState(false);
   const [nameSaved,setNS]=useState(false);
+  const [logoSaved,setLS]=useState(false);
+  const showLogoSaved=()=>{setLS(true);setTimeout(()=>setLS(false),2000);};
   const [loading,setLoading]=useState(false);
   const [qrT,setQrT]=useState<number|null>(null);
   const lRef=useRef<HTMLInputElement>(null);
   useEffect(()=>{setTc(String(tables.length||5));},[tables.length]);
-  useEffect(()=>{getSettings(branchId).then(s=>{if(s.qrTopText)setTop(s.qrTopText);if(s.qrBottomText)setBot(s.qrBottomText);if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);if((s as any).brandLogo)setLogo((s as any).brandLogo);});},[branchId]);
+  useEffect(()=>{
+    // Load branch name first
+    getBranch(branchId).then(b=>{if(b?.name)setTop(prev=>prev||b.name);});
+    getSettings(branchId).then(s=>{
+      if(s.qrTopText)setTop(s.qrTopText);
+      if(s.qrBottomText)setBot(s.qrBottomText);
+      if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);
+      if((s as any).brandLogo)setLogo((s as any).brandLogo);
+    });
+  },[branchId]);
   const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c"><div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
   return(
@@ -1023,7 +1034,12 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
         <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>🏷️ РЕСТОРАН/САЛБАРЫН НЭР</p>
         <div style={{display:'flex',gap:'0.5rem'}}>
           <input value={top} onChange={e=>setTop(e.target.value)} placeholder="Ресторан нэр" style={{...IS,flex:1}}/>
-          <button onClick={async()=>{await saveSettings(branchId,{qrTopText:top} as any);setNS(true);setTimeout(()=>setNS(false),2000);}} style={{padding:'0.5rem 1rem',background:nameSaved?C.green:C.orange,border:'none',borderRadius:'8px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',flexShrink:0,transition:'background 0.2s'}}>{nameSaved?'✓ Хадгалагдлаа':'Хадгалах'}</button>
+          <button onClick={async()=>{
+            if(!top.trim())return;
+            await saveSettings(branchId,{qrTopText:top} as any);
+            await updateBranchName(branchId,top);
+            setNS(true);setTimeout(()=>setNS(false),2000);
+          }} style={{padding:'0.5rem 1rem',background:nameSaved?C.green:C.orange,border:'none',borderRadius:'8px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',flexShrink:0,transition:'background 0.2s'}}>{nameSaved?'✓ Хадгалагдлаа':'Хадгалах'}</button>
         </div>
         <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.25rem 0 0'}}>QR хэвлэлт болон sidebar-д харагдана</p>
       </div>
@@ -1031,6 +1047,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
         <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>🖼️ БАЙГУУЛЛАГЫН ЛОГО</p>
         {logo?<div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.5rem'}}>
           <img src={logo} alt="logo" style={{width:'64px',height:'64px',borderRadius:'10px',objectFit:'cover',border:`1px solid ${C.border}`}}/>
+          <button onClick={async()=>{await saveSettings(branchId,{brandLogo:logo} as any);showLogoSaved();}} style={{padding:'0.35rem 0.875rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,color:C.green,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>💾 Хадгалах</button>
           <button onClick={()=>setLogo('')} style={{padding:'0.35rem 0.75rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>✕ Устгах</button>
         </div>
         :<div onClick={()=>lRef.current?.click()} style={{height:'64px',border:`2px dashed ${C.border}`,borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:'0.5rem',marginBottom:'0.5rem'}} onMouseOver={e=>{e.currentTarget.style.borderColor=C.yellow;}} onMouseOut={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.08)';}}>
