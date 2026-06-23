@@ -94,7 +94,9 @@ export const createBranch = async (
 export const getAllBranches = async (): Promise<Branch[]> => {
   const snap = await get(ref(db, 'branches'));
   if (!snap.exists()) return [];
-  return Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val }));
+  return Object.entries(snap.val())
+    .map(([id, val]: any) => ({ id, ...val }))
+    .filter((b: any) => b.name && b.licenseKey);
 };
 
 export const getBranch = async (branchId: string): Promise<Branch | null> => {
@@ -179,7 +181,9 @@ export const addStaff = async (
 export const getStaff = async (branchId: string): Promise<Staff[]> => {
   const snap = await get(ref(db, `branches/${branchId}/staff`));
   if (!snap.exists()) return [];
-  return Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val }));
+  return Object.entries(snap.val())
+    .map(([id, val]: any) => ({ id, ...val }))
+    .filter((b: any) => b.name && b.licenseKey);
 };
 
 export const removeStaff = async (branchId: string, staffId: string): Promise<void> => {
@@ -213,7 +217,9 @@ export const addMenuItem = async (
 export const getMenu = async (branchId: string): Promise<MenuItem[]> => {
   const snap = await get(ref(db, `branches/${branchId}/menu`));
   if (!snap.exists()) return [];
-  return Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val }));
+  return Object.entries(snap.val())
+    .map(([id, val]: any) => ({ id, ...val }))
+    .filter((b: any) => b.name && b.licenseKey);
 };
 
 export const updateMenuItem = async (
