@@ -555,7 +555,7 @@ export const subscribeToCategories = (
 export interface ProductStat {
   name: string;
   revenue: number;
-  units: number;
+  qty: number;
 }
 export interface DayStat {
   date: string;
@@ -566,8 +566,8 @@ export interface SalesReportData {
   totalRevenue: number;
   orderCount: number;
   avgOrder: number;
-  topProducts: ProductStat[];
-  byDate: DayStat[];
+  products: ProductStat[];
+  dailyRevenue: { date: string; revenue: number }[];
 }
 
 export const getSalesReport = async (
@@ -576,7 +576,7 @@ export const getSalesReport = async (
   toMs = Date.now()
 ): Promise<SalesReportData> => {
   const snap = await get(ref(db, `branches/${branchId}/orders`));
-  const empty: SalesReportData = { totalRevenue:0, orderCount:0, avgOrder:0, topProducts:[], byDate:[] };
+  const empty: SalesReportData = { totalRevenue:0, orderCount:0, avgOrder:0, products:[], dailyRevenue:[] };
   if (!snap.exists()) return empty;
 
   const orders: Order[] = Object.values(snap.val()).filter(
@@ -592,8 +592,8 @@ export const getSalesReport = async (
     pm[item.name].revenue += item.price * item.quantity;
     pm[item.name].units += item.quantity;
   }));
-  const topProducts = Object.entries(pm)
-    .map(([name, d]) => ({ name, ...d }))
+  const products = Object.entries(pm)
+    .map(([name, d]: any) => ({ name, revenue: d.revenue, qty: d.units||d.qty||0 }))
     .sort((a, b) => b.revenue - a.revenue);
 
   // By date
@@ -605,7 +605,7 @@ export const getSalesReport = async (
     dm[date].revenue += o.totalAmount || 0;
     dm[date].orders += 1;
   });
-  const byDate = Object.entries(dm)
+  const dailyRevenue = Object.entries(dm)
     .map(([date, d]) => ({ date, ...d }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -613,8 +613,8 @@ export const getSalesReport = async (
     totalRevenue,
     orderCount: orders.length,
     avgOrder: orders.length ? Math.round(totalRevenue / orders.length) : 0,
-    topProducts,
-    byDate,
+    products,
+    dailyRevenue,
   };
 };
 
