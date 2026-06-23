@@ -11,6 +11,7 @@ import {
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getSalesReport,
+  getLicense, checkLicenseStatus, getManagerPassword, setManagerPassword, getBranchIdByLicense, getBranchLicenseStatus, LicenseCheck,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
