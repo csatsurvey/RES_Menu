@@ -70,18 +70,19 @@ export default function App() {
   const [tableNum,setTableNum]=useState(0);
   const [isManager,setIsManager]=useState(false);
   const [staff,setStaff]=useState<Staff|null>(null);
+  const [license,setLicense]=useState<LicenseCheck|null>(null);
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
   },[]);
-  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);};
+  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
-  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} onLogout={logout}/>;
-  return <LandingView onManager={id=>{setBranchId(id);setIsManager(true);setView('admin');}} onStaff={(id,s)=>{setBranchId(id);setStaff(s);setView('admin');}}/>;
+  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>;
+  return <LandingView onManager={(id,lic)=>{setBranchId(id);setIsManager(true);setLicense(lic);setView('admin');}} onStaff={(id,s)=>{setBranchId(id);setStaff(s);getBranchLicenseStatus(id).then(setLicense);setView('admin');}}/>;
 }
 
-function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
+function LandingView({onManager,onStaff}:{onManager:(id:string,lic:LicenseCheck)=>void;onStaff:(id:string,s:Staff)=>void}) {
   const [branches,setBranches]=useState<Branch[]>([]);
   const [mode,setMode]=useState<'select'|'manager'|'staff'>('select');
   // Manager states
@@ -139,7 +140,8 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     try{
       await setManagerPassword(licKey.trim().toUpperCase(),await sha256(mPass));
       localStorage.setItem('rms_licKey',licKey.trim().toUpperCase());
-      onManager(mBranchId);
+      const lic=await getBranchLicenseStatus(mBranchId);
+      onManager(mBranchId,lic);
     }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
   };
 
@@ -151,7 +153,8 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
       const stored=await getManagerPassword(licKey.trim().toUpperCase());
       if(stored!==hash){setLoading(false);return setError('Нууц үг буруу байна');}
       localStorage.setItem('rms_licKey',licKey.trim().toUpperCase());
-      onManager(mBranchId);
+      const licCheck=await getBranchLicenseStatus(mBranchId);
+      onManager(mBranchId,licCheck);
     }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
   };
 
@@ -902,7 +905,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   );
 }
 
-function AdminPanel({branchId,isManager,staff,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;onLogout:()=>void}) {
+function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license?:LicenseCheck|null;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
