@@ -555,7 +555,7 @@ export const subscribeToCategories = (
 export interface ProductStat {
   name: string;
   revenue: number;
-  qty: number;
+  units: number;
 }
 export interface DayStat {
   date: string;
@@ -566,8 +566,8 @@ export interface SalesReportData {
   totalRevenue: number;
   orderCount: number;
   avgOrder: number;
-  products: ProductStat[];
-  dailyRevenue: { date: string; revenue: number }[];
+  topProducts: ProductStat[];
+  byDate: DayStat[];
 }
 
 export const getSalesReport = async (
@@ -576,7 +576,7 @@ export const getSalesReport = async (
   toMs = Date.now()
 ): Promise<SalesReportData> => {
   const snap = await get(ref(db, `branches/${branchId}/orders`));
-  const empty: SalesReportData = { totalRevenue:0, orderCount:0, avgOrder:0, products:[], dailyRevenue:[] };
+  const empty: SalesReportData = { totalRevenue:0, orderCount:0, avgOrder:0, topProducts:[], byDate:[] };
   if (!snap.exists()) return empty;
 
   const orders: Order[] = Object.values(snap.val()).filter(
@@ -592,8 +592,8 @@ export const getSalesReport = async (
     pm[item.name].revenue += item.price * item.quantity;
     pm[item.name].units += item.quantity;
   }));
-  const products = Object.entries(pm)
-    .map(([name, d]) => ({ name, revenue: d.revenue, qty: d.units }))
+  const topProducts = Object.entries(pm)
+    .map(([name, d]) => ({ name, ...d }))
     .sort((a, b) => b.revenue - a.revenue);
 
   // By date
@@ -605,117 +605,36 @@ export const getSalesReport = async (
     dm[date].revenue += o.totalAmount || 0;
     dm[date].orders += 1;
   });
-  const dailyRevenue = Object.entries(dm)
-    .map(([date, d]) => ({ date, revenue: d.revenue }))
+  const byDate = Object.entries(dm)
+    .map(([date, d]) => ({ date, ...d }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return {
     totalRevenue,
     orderCount: orders.length,
     avgOrder: orders.length ? Math.round(totalRevenue / orders.length) : 0,
-    products,
-    dailyRevenue,
+    topProducts,
+    byDate,
   };
 };
 
-// ════════════════════════════════════════════════════════════
-// LICENSE SYSTEM
-// ════════════════════════════════════════════════════════════
-export type LicenseStatus = 'trial' | 'active' | 'expired' | 'blocked';
-export type LicensePlan   = 'trial' | 'monthly' | 'yearly';
-
+// ════════════════════════════════════════════════
+// LICENSE FUNCTIONS
+// ════════════════════════════════════════════════
 export interface License {
   key: string;
-  clientName: string;
+  branchName: string;
+  ownerName: string;
   phone?: string;
-  branchId?: string;
-  status: LicenseStatus;
-  plan: LicensePlan;
-  expiresAt: number;
+  status: 'trial' | 'paid' | 'blocked' | 'expired';
+  startDate: number;
+  endDate: number;
   createdAt: number;
   note?: string;
-  maxTables?: number;
+  branchId?: string;
+  managerPassword?: string;
 }
 
-const genKey = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let k = 'RES-';
-  for (let i = 0; i < 6; i++) k += chars[Math.floor(Math.random() * chars.length)];
-  return k;
-};
-
-export const createLicense = async (
-  data: Omit<License, 'key' | 'createdAt'>
-): Promise<string> => {
-  const key = genKey();
-  await set(ref(db, `licenses/${key}`), { ...data, key, createdAt: Date.now() });
-  return key;
-};
-
-export const getLicense = async (key: string): Promise<License | null> => {
-  const snap = await get(ref(db, `licenses/${key}`));
-  return snap.exists() ? snap.val() as License : null;
-};
-
-export const updateLicense = async (
-  key: string,
-  data: Partial<License>
-): Promise<void> => {
-  await update(ref(db, `licenses/${key}`), data);
-};
-
-export const deleteLicense = async (key: string): Promise<void> => {
-  await remove(ref(db, `licenses/${key}`));
-};
-
-export const subscribeToLicenses = (
-  cb: (licenses: License[]) => void
-): (() => void) => {
-  const r = ref(db, 'licenses');
-  const h = onValue(r, snap => {
-    if (!snap.exists()) { cb([]); return; }
-    cb(Object.values(snap.val() as Record<string, License>)
-      .sort((a, b) => b.createdAt - a.createdAt));
-  });
-  return () => off(r, 'value', h);
-};
-
-// Check if license is valid right now
-export const checkLicense = (lic: License): {
-  valid: boolean;
-  daysLeft: number;
-  message: string;
-} => {
-  const now = Date.now();
-  const daysLeft = Math.ceil((lic.expiresAt - now) / 86400000);
-  if (lic.status === 'blocked') return { valid: false, daysLeft: 0, message: 'Лиценц хаагдсан байна.' };
-  if (lic.status === 'expired' || now > lic.expiresAt) {
-    return { valid: false, daysLeft: 0, message: 'Лицензийн хугацаа дууссан байна.' };
-  }
-  if (lic.status === 'trial') return { valid: true, daysLeft, message: `Туршилтын горим — ${daysLeft} хоног үлдсэн` };
-  return { valid: true, daysLeft, message: '' };
-};
-
-// Attach license to a branch (store licenseKey in branch info)
-export const attachLicenseToBranch = async (
-  branchId: string,
-  licenseKey: string
-): Promise<void> => {
-  await update(ref(db, `branches/${branchId}/info`), { licenseKey });
-  await update(ref(db, `licenses/${licenseKey}`), { branchId });
-};
-
-export const getBranchLicense = async (branchId: string): Promise<License | null> => {
-  const branch = await getBranch(branchId);
-  if (!branch) return null;
-  const key = (branch as any).licenseKey;
-  if (!key) return null;
-  return getLicense(key);
-};
-
-// ════════════════════════════════════════════════════════════
-// LICENSE CHECK HELPERS (LicenseCheck return type)
-// ════════════════════════════════════════════════════════════
 export interface LicenseCheck {
   valid: boolean;
   status: License['status'] | 'none';
@@ -723,6 +642,12 @@ export interface LicenseCheck {
   message: string;
   license: License | null;
 }
+
+export const getLicense = async (licKey: string): Promise<License | null> => {
+  const snap = await get(ref(db, `licenses/${licKey}`));
+  if (!snap.exists()) return null;
+  return { key: licKey, ...snap.val() };
+};
 
 export const checkLicenseStatus = (lic: License | null): LicenseCheck => {
   if (!lic) return { valid: false, status: 'none', daysLeft: 0, message: 'Лиценз олдсонгүй', license: null };
@@ -733,55 +658,6 @@ export const checkLicenseStatus = (lic: License | null): LicenseCheck => {
   return { valid: true, status: 'paid', daysLeft, message: `🟢 Идэвхтэй — ${daysLeft} хоног үлдсэн`, license: lic };
 };
 
-export const getBranchLicenseStatus = async (branchId: string): Promise<LicenseCheck> => {
-  const branchSnap = await get(ref(db, `branches/${branchId}/licenseKey`));
-  if (!branchSnap.exists()) return { valid: false, status: 'none', daysLeft: 0, message: '⚠️ Лиценз холбоогүй байна', license: null };
-  const lic = await getLicense(branchSnap.val());
-  return checkLicenseStatus(lic);
-};
-
-export const setBranchLicense = async (branchId: string, licenseKey: string): Promise<void> => {
-  await update(ref(db, `branches/${branchId}`), { licenseKey });
-  await update(ref(db, `licenses/${licenseKey}`), { branchId });
-};
-
-// ── License Activation (key entry → trial starts NOW) ────────
-export const activateLicense = async (
-  branchId: string,
-  licenseKey: string
-): Promise<{ success: boolean; message: string; license?: License }> => {
-  const snap = await get(ref(db, `licenses/${licenseKey.trim().toUpperCase()}`));
-  if (!snap.exists()) return { success: false, message: '❌ Лицензийн түлхүүр олдсонгүй' };
-
-  const lic: License = { key: licenseKey, ...snap.val() };
-
-  if (lic.status === 'blocked')
-    return { success: false, message: '⛔ Энэ лиценз хаагдсан байна' };
-  if (lic.branchId && lic.branchId !== branchId)
-    return { success: false, message: '❌ Энэ түлхүүр өөр салбарт ашиглагдаж байна' };
-
-  // Activation: trial starts NOW
-  const now = Date.now();
-  const isPaid = lic.status === 'paid';
-  const startDate = now;
-  const endDate = isPaid ? now + 31536000000 : now + 1209600000; // 1 жил / 14 хоног
-  const status: License['status'] = isPaid ? 'paid' : 'trial';
-
-  const updates: Record<string, any> = {};
-  updates[`licenses/${licenseKey}/branchId`] = branchId;
-  updates[`licenses/${licenseKey}/startDate`] = startDate;
-  updates[`licenses/${licenseKey}/endDate`] = endDate;
-  updates[`licenses/${licenseKey}/status`] = status;
-  updates[`branches/${branchId}/licenseKey`] = licenseKey;
-  await update(ref(db), updates);
-
-  const activated = { ...lic, startDate, endDate, status, branchId };
-  return { success: true, message: `✅ Лиценз идэвхжлээ!`, license: activated };
-};
-
-// ════════════════════════════════════════════════════════════
-// MANAGER AUTH (license key + password)
-// ════════════════════════════════════════════════════════════
 export const getManagerPassword = async (licKey: string): Promise<string | null> => {
   const snap = await get(ref(db, `licenses/${licKey}/managerPassword`));
   return snap.exists() ? snap.val() : null;
@@ -794,4 +670,11 @@ export const setManagerPassword = async (licKey: string, passwordHash: string): 
 export const getBranchIdByLicense = async (licKey: string): Promise<string | null> => {
   const snap = await get(ref(db, `licenses/${licKey}/branchId`));
   return snap.exists() ? snap.val() : null;
+};
+
+export const getBranchLicenseStatus = async (branchId: string): Promise<LicenseCheck> => {
+  const snap = await get(ref(db, `branches/${branchId}/licenseKey`));
+  if (!snap.exists()) return { valid: true, status: 'paid', daysLeft: 9999, message: '', license: null };
+  const lic = await getLicense(snap.val());
+  return checkLicenseStatus(lic);
 };
