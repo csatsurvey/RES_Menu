@@ -255,6 +255,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
           <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
           <h1 style={{color:C.yellow,fontWeight:'900',fontSize:'1.5rem',letterSpacing:'0.05em',margin:'0 0 0.2rem'}}>РЕСТОРАН СИСТЕМ</h1>
           <p style={{color:C.muted,fontSize:'0.8rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
+          <p style={{color:'rgba(255,255,255,0.15)',fontSize:'0.62rem',margin:0}}>v2.1 — staff-branches</p>
         </div>
 
         {/* ── SELECT ── */}
