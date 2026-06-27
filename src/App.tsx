@@ -557,7 +557,13 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
             <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{activeBranchName}</p>
           </div>
           <input type="password" value={staffPin} onChange={e=>{setStaffPin(e.target.value);resetErr();}} onKeyDown={e=>e.key==='Enter'&&loginStaffWithPin(activeBranchId,activeBranchName)} placeholder="PIN оруулна уу" style={IS} autoFocus inputMode="numeric"/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+          {error&&<>
+            <p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>
+            <button onClick={()=>{removeSavedBranch(activeBranchId);setMode('staff-lic');setLicCode('');setLicVerified(false);setLicSelBid('');resetErr();setStaffPin('');}}
+              style={{padding:'0.6rem',background:`${C.yellow}15`,border:`1px solid ${C.yellow}44`,borderRadius:'10px',color:C.yellow,cursor:'pointer',fontWeight:'700',fontSize:'0.8rem',width:'100%'}}>
+              💡 Салбар буруу байна уу? → Өөр салбар сонгох
+            </button>
+          </>}
           <button onClick={()=>loginStaffWithPin(activeBranchId,activeBranchName)} disabled={loading||!staffPin}
             style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
             {loading?'Нэвтрэж байна...':'Нэвтрэх'}
