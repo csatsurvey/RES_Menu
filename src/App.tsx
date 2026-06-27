@@ -476,13 +476,26 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
   const [loading,setLoading]=useState(false);
   const [ok,setOk]=useState(false);
   const [qs,setQs]=useState(DEF_Q);
+  const [phErr,setPhErr]=useState('');
   useEffect(()=>{getSettings(branchId).then(s=>{if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);});},[branchId]);
-  const can=KEYS.every(k=>sc[k]>0); // Star ratings required; NPS, phone, notes optional
+
+  // At least one star rating is enough to submit
+  const ratedCount=KEYS.filter(k=>sc[k]>0).length;
+  const can=ratedCount>0;
+
   const submit=async()=>{
-    if(!can)return;setLoading(true);
+    if(!can)return;
+    // Phone: if entered, must be exactly 8 digits
+    if(ph.length>0&&ph.length!==8){
+      setPhErr('Утасны дугаар 8 оронтой байх ёстой');
+      return;
+    }
+    setPhErr('');setLoading(true);
     try{
-      const csat=Math.round(KEYS.reduce((s,k)=>s+sc[k],0)/KEYS.length);
-      await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb,phone:ph||undefined});
+      // CSAT: average of only rated categories
+      const rated=KEYS.filter(k=>sc[k]>0);
+      const csat=rated.length?Math.round(rated.reduce((s,k)=>s+sc[k],0)/rated.length):0;
+      await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||'',phone:ph||undefined});
       setOk(true);setTimeout(()=>{setLoading(false);onClose();},2000);
     }catch(e){console.error(e);setLoading(false);}
   };
@@ -495,6 +508,10 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
         </div>
         {ok?<div style={{padding:'2rem',textAlign:'center'}}><div style={{fontSize:'3rem',marginBottom:'0.75rem'}}>🙏</div><p style={{color:C.green,fontWeight:'800',fontSize:'1.1rem',margin:'0 0 0.25rem'}}>Баярлалаа!</p><p style={{color:C.muted,fontSize:'0.85rem',margin:0}}>Таны санал бидэнд маш чухал</p></div>
         :<>
+          {/* Required hint */}
+          <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.5rem 0.75rem',marginBottom:'0.75rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            <span style={{fontSize:'0.72rem',color:C.muted}}>⭐ Нэг ч гэсэн үнэлгээ өгснөөр илгээх боломжтой. Утас болон тайлбар <b style={{color:'rgba(255,255,255,0.6)'}}>заавал биш</b>.</span>
+          </div>
           {qs.map((q,i)=>(
             <div key={i} style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.5rem'}}>
               <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.5rem',fontSize:'0.875rem'}}>{i+1}. {q}</p>
@@ -504,16 +521,26 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
             </div>
           ))}
           <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.5rem'}}>
-            <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.875rem'}}>Найз нөхөддөө санал болгох магадлал (0-10)</p>
+            <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.875rem'}}>Найз нөхөддөө санал болгох магадлал (0-10) <span style={{color:C.muted,fontSize:'0.72rem',fontWeight:'400'}}>(заавал биш)</span></p>
             <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap'}}>
               {Array.from({length:11},(_,i)=><button key={i} onClick={()=>setNps(i)} style={{width:'36px',height:'36px',borderRadius:'8px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.82rem',transition:'all 0.1s'}}>{i}</button>)}
             </div>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.68rem',color:C.muted,marginTop:'0.3rem'}}><span>Огт зөвлөхгүй</span><span>Заавал зөвлөнө</span></div>
           </div>
-          <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2} placeholder="Нэмэлт санал... (заавал биш)" style={{...IS,resize:'none' as const,marginBottom:'0.5rem'}}/>
-          <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="☎ Утасны дугаар 8 орон (заавал биш)" style={{...IS,marginBottom:'1rem'}} inputMode="numeric"/>
-          <button onClick={submit} disabled={!can||loading} style={{width:'100%',padding:'0.9rem',background:can?C.yellow:C.inpBg,color:can?'#000':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1,fontSize:'0.95rem',transition:'all 0.2s'}}>
-            {loading?'Илгээж байна...':'✓ ИЛГЭЭХ'}
+          <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2} placeholder="💬 Нэмэлт санал... (заавал биш)" style={{...IS,resize:'none' as const,marginBottom:'0.5rem'}}/>
+          <div style={{marginBottom:'1rem'}}>
+            <input
+              value={ph}
+              onChange={e=>{setPh(e.target.value.replace(/\D/g,'').slice(0,8));setPhErr('');}}
+              placeholder="☎ Утасны дугаар (заавал биш)"
+              style={{...IS,borderColor:phErr?C.red:undefined}}
+              inputMode="numeric"
+            />
+            {phErr&&<p style={{color:C.red,fontSize:'0.75rem',margin:'0.25rem 0 0',textAlign:'center'}}>{phErr}</p>}
+            {ph.length>0&&ph.length<8&&!phErr&&<p style={{color:C.muted,fontSize:'0.72rem',margin:'0.25rem 0 0',textAlign:'center'}}>{ph.length}/8 оронтой</p>}
+          </div>
+          <button onClick={submit} disabled={!can||loading} style={{width:'100%',padding:'0.9rem',background:can?C.yellow:C.inpBg,color:can?'#000':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:can?'pointer':'not-allowed',opacity:loading?0.7:1,fontSize:'0.95rem',transition:'all 0.2s'}}>
+            {loading?'Илгээж байна...':can?'✓ ИЛГЭЭХ':`⭐ Дор хаяж нэг үнэлгээ өгнө үү`}
           </button>
         </>}
       </div>
@@ -1535,6 +1562,10 @@ function BranchStatCard({branchId,branchName,isCurrent,currentOrders,currentSurv
   const csat=filtSrv.length?Math.round(filtSrv.filter(s=>s.csat>=4).length/filtSrv.length*100):null;
   const avgScore=filtSrv.length?+(filtSrv.reduce((s,x)=>s+x.csat,0)/filtSrv.length).toFixed(1):null;
 
+  // NPS calculation
+  const npsArr=filtSrv.filter(s=>s.nps>=0).map(s=>s.nps);
+  const npsScore=npsArr.length?Math.round(((npsArr.filter(n=>n>=9).length-npsArr.filter(n=>n<=6).length)/npsArr.length)*100):null;
+
   const hasAlerts=slowOrders.length>0||unresolvedComplaints>0;
 
   return(
@@ -1557,9 +1588,11 @@ function BranchStatCard({branchId,branchName,isCurrent,currentOrders,currentSurv
           {l:'Орлого (₮)',v:revenue>0?formatPrice(revenue):'—',c:C.green},
           {l:'CSAT',v:csat!==null?`${csat}%`:'—',c:csat===null?C.muted:csat>=70?C.green:csat>=50?C.orange:C.red},
           {l:'Дундаж оноо',v:avgScore?`${avgScore}/5`:'—',c:avgScore===null?C.muted:avgScore>=4?C.green:avgScore>=3?C.orange:C.red},
+          {l:'NPS оноо',v:npsScore!==null?`${npsScore>0?'+':''}${npsScore}`:'—',c:npsScore===null?C.muted:npsScore>=50?C.green:npsScore>=0?C.orange:C.red},
+          {l:'Судалгаа',v:`${filtSrv.length} хариулт`,c:filtSrv.length>0?C.yellow:C.muted},
         ].map(s=>(
           <div key={s.l} style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.5rem 0.65rem'}}>
-            <p style={{color:s.c,fontWeight:'800',fontSize:'0.95rem',margin:'0 0 0.1rem'}}>{s.v}</p>
+            <p style={{color:s.c,fontWeight:'800',fontSize:'0.9rem',margin:'0 0 0.1rem'}}>{s.v}</p>
             <p style={{color:C.muted,fontSize:'0.62rem',margin:0}}>{s.l}</p>
           </div>
         ))}
@@ -1596,6 +1629,7 @@ function BranchStatCard({branchId,branchName,isCurrent,currentOrders,currentSurv
 function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,currentOrders,currentSurveys}:{currentBranchId:string;currentBranchName:string;siblingBranches:Branch[];currentOrders:Order[];currentSurveys:Survey[]}) {
   const [df,setDf]=useState<'today'|'7d'|'1m'|'3m'>('today');
   const [focusBranch,setFocusBranch]=useState<string>('all');
+  const [activeTab,setActiveTab]=useState<'compare'|'sales'|'complaints'>('compare');
 
   const fms:{[k:string]:number}={today:86400000,'7d':604800000,'1m':2592000000,'3m':7776000000};
   const dfLabel:{[k:string]:string}={today:'Өнөөдөр','7d':'7 хоног','1m':'1 сар','3m':'3 сар'};
@@ -1605,57 +1639,173 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
     ...siblingBranches.map(b=>({...b,isCurrent:false}))
   ];
 
-  const displayBranches=focusBranch==='all'
-    ?allBranches
-    :allBranches.filter(b=>b.id===focusBranch);
+  // Collect sibling branches' data
+  const [siblingData,setSiblingData]=useState<Record<string,{orders:Order[];surveys:Survey[]}>>({});
+  useEffect(()=>{
+    const unsubs=siblingBranches.map(b=>{
+      const u1=subscribeToOrders(b.id,orders=>setSiblingData(p=>({...p,[b.id]:{...(p[b.id]||{}),orders}})));
+      const u2=subscribeToSurveys(b.id,surveys=>setSiblingData(p=>({...p,[b.id]:{...(p[b.id]||{}),surveys}})));
+      return[u1,u2];
+    });
+    return()=>unsubs.flat().forEach(u=>u());
+  },[siblingBranches.map(b=>b.id).join(',')]);
+
+  // All data combined
+  const now=Date.now();
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const todayMs=todayStart.getTime();
+
+  const allDataByBranch:{[id:string]:{name:string;orders:Order[];surveys:Survey[]}}={
+    [currentBranchId]:{name:currentBranchName,orders:currentOrders,surveys:currentSurveys},
+    ...Object.fromEntries(siblingBranches.map(b=>([b.id,{name:b.name,orders:siblingData[b.id]?.orders||[],surveys:siblingData[b.id]?.surveys||[]}])))
+  };
+
+  const filterOrd=(orders:Order[])=>df==='today'?orders.filter(o=>o.createdAt>=todayMs):orders.filter(o=>(now-o.createdAt)<=fms[df]);
+  const filterSrv=(surveys:Survey[])=>df==='today'?surveys.filter(s=>s.createdAt>=todayMs):surveys.filter(s=>(now-s.createdAt)<=fms[df]);
+
+  // All combined
+  const allOrders=Object.values(allDataByBranch).flatMap(d=>filterOrd(d.orders));
+  const allSurveys=Object.values(allDataByBranch).flatMap(d=>filterSrv(d.surveys));
+
+  // Combined sales
+  const totalRevenue=allOrders.filter(o=>o.status==='served').reduce((s,o)=>s+o.totalAmount,0);
+  const productMap:Record<string,{rev:number;qty:number}>={};
+  allOrders.filter(o=>o.status==='served').forEach(o=>o.items?.forEach(item=>{
+    if(!productMap[item.name])productMap[item.name]={rev:0,qty:0};
+    productMap[item.name].rev+=item.price*item.quantity;
+    productMap[item.name].qty+=item.quantity;
+  }));
+  const topProducts=Object.entries(productMap).map(([name,d])=>({name,...d})).sort((a,b)=>b.rev-a.rev);
+
+  // Branch revenue breakdown
+  const branchRevMap=Object.entries(allDataByBranch).map(([id,d])=>({
+    id,name:d.name,
+    revenue:filterOrd(d.orders).filter(o=>o.status==='served').reduce((s,o)=>s+o.totalAmount,0),
+    orders:filterOrd(d.orders).length
+  })).sort((a,b)=>b.revenue-a.revenue);
+
+  // Combined complaints (all surveys with phone, not resolved)
+  const allComplaintsRaw=Object.entries(allDataByBranch).flatMap(([bId,d])=>
+    d.surveys.filter(s=>s.phone&&s.phone.trim()).map(s=>({...s,_bId:bId,_bName:d.name}))
+  ).sort((a,b)=>b.createdAt-a.createdAt);
+  const [cmplTab,setCmplTab]=useState<'open'|'closed'>('open');
+  const openComplaints=allComplaintsRaw.filter(s=>!s.resolved);
+  const closedComplaints=allComplaintsRaw.filter(s=>s.resolved);
+  const curComplaints=cmplTab==='open'?openComplaints:closedComplaints;
+
+  const displayBranches=focusBranch==='all'?allBranches:allBranches.filter(b=>b.id===focusBranch);
 
   return(
     <div>
-      {/* Title */}
+      {/* Title + tabs */}
       <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1rem',flexWrap:'wrap' as const}}>
         <h2 style={{color:C.yellow,fontWeight:'800',fontSize:'1rem',margin:0}}>🏢 Бүх салбарын нэгтгэсэн харагдац</h2>
         <span style={{background:`${C.yellow}22`,color:C.yellow,borderRadius:'20px',padding:'0.2rem 0.75rem',fontSize:'0.72rem',fontWeight:'700'}}>{allBranches.length} салбар</span>
       </div>
 
-      {/* Date period filter */}
-      <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.875rem',flexWrap:'wrap' as const,alignItems:'center'}}>
+      {/* Main tab nav */}
+      <div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem',background:'rgba(255,255,255,0.04)',borderRadius:'12px',padding:'0.3rem'}}>
+        {[{k:'compare',l:'📊 Харьцуулах'},{k:'sales',l:'💰 Борлуулалт'},{k:'complaints',l:'📞 Гомдол'}].map(t=>(
+          <button key={t.k} onClick={()=>setActiveTab(t.k as any)} style={{flex:1,padding:'0.5rem 0.75rem',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:activeTab===t.k?'700':'500',fontSize:'0.8rem',background:activeTab===t.k?C.card:'transparent',color:activeTab===t.k?C.yellow:C.muted,transition:'all 0.15s'}}>{t.l}</button>
+        ))}
+      </div>
+
+      {/* Date filter (shared) */}
+      <div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem',flexWrap:'wrap' as const,alignItems:'center'}}>
         {[{k:'today',l:'Өнөөдөр'},{k:'7d',l:'7 хоног'},{k:'1m',l:'1 сар'},{k:'3m',l:'3 сар'}].map(f=>(
-          <button key={f.k} onClick={()=>setDf(f.k as any)} style={{padding:'0.38rem 0.875rem',borderRadius:'20px',border:`1px solid ${df===f.k?C.yellow:C.border}`,background:df===f.k?`${C.yellow}22`:'transparent',color:df===f.k?C.yellow:C.muted,fontWeight:df===f.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>{f.l}</button>
+          <button key={f.k} onClick={()=>setDf(f.k as any)} style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${df===f.k?C.yellow:C.border}`,background:df===f.k?`${C.yellow}22`:'transparent',color:df===f.k?C.yellow:C.muted,fontWeight:df===f.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{f.l}</button>
         ))}
-        <span style={{color:C.muted,fontSize:'0.72rem',marginLeft:'0.25rem'}}>📅 {dfLabel[df]} харуулж байна</span>
+        <span style={{color:C.muted,fontSize:'0.7rem',marginLeft:'0.25rem'}}>📅 {dfLabel[df]}</span>
       </div>
 
-      {/* Branch filter (only if 3+ branches) */}
-      {allBranches.length>2&&<div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem',flexWrap:'wrap' as const}}>
-        <button onClick={()=>setFocusBranch('all')} style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${focusBranch==='all'?C.orange:C.border}`,background:focusBranch==='all'?`${C.orange}22`:'transparent',color:focusBranch==='all'?C.orange:C.muted,fontWeight:focusBranch==='all'?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>Бүгд</button>
-        {allBranches.map(b=>(
-          <button key={b.id} onClick={()=>setFocusBranch(b.id)} style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${focusBranch===b.id?C.orange:C.border}`,background:focusBranch===b.id?`${C.orange}22`:'transparent',color:focusBranch===b.id?C.orange:C.muted,fontWeight:focusBranch===b.id?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>
-            {b.name}{b.isCurrent?' (Одоогийн)':''}
-          </button>
-        ))}
-      </div>}
+      {/* ── TAB: COMPARE ── */}
+      {activeTab==='compare'&&<>
+        {allBranches.length>2&&<div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem',flexWrap:'wrap' as const}}>
+          <button onClick={()=>setFocusBranch('all')} style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${focusBranch==='all'?C.orange:C.border}`,background:focusBranch==='all'?`${C.orange}22`:'transparent',color:focusBranch==='all'?C.orange:C.muted,fontWeight:focusBranch==='all'?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>Бүгд</button>
+          {allBranches.map(b=>(
+            <button key={b.id} onClick={()=>setFocusBranch(b.id)} style={{padding:'0.35rem 0.75rem',borderRadius:'20px',border:`1px solid ${focusBranch===b.id?C.orange:C.border}`,background:focusBranch===b.id?`${C.orange}22`:'transparent',color:focusBranch===b.id?C.orange:C.muted,fontWeight:focusBranch===b.id?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{b.name}{b.isCurrent?' ✓':''}</button>
+          ))}
+        </div>}
+        <div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap' as const}}>
+          {displayBranches.map(b=>(
+            <BranchStatCard key={b.id} branchId={b.id} branchName={b.name} isCurrent={b.isCurrent} filterMs={fms[df]}
+              currentOrders={b.isCurrent?currentOrders:undefined} currentSurveys={b.isCurrent?currentSurveys:undefined}/>
+          ))}
+        </div>
+      </>}
 
-      {/* Legend */}
-      <div style={{background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:'10px',padding:'0.6rem 0.875rem',marginBottom:'1rem',display:'flex',gap:'1rem',flexWrap:'wrap' as const}}>
-        {[{icon:'⏰',label:'15+ минут болсон захиалга',c:C.red},{icon:'⚠️',label:'Шийдвэрлэгдээгүй гомдол',c:C.orange},{icon:'🔔',label:'Идэвхтэй захиалга',c:C.yellow},{icon:'✅',label:'Асуудал байхгүй',c:C.green}].map(l=>(
-          <span key={l.label} style={{fontSize:'0.7rem',color:l.c,display:'flex',alignItems:'center',gap:'0.25rem'}}>{l.icon} {l.label}</span>
-        ))}
-      </div>
+      {/* ── TAB: SALES ── */}
+      {activeTab==='sales'&&<>
+        {/* Totals */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.6rem',marginBottom:'1rem'}}>
+          {[{l:'Нийт орлого',v:formatPrice(totalRevenue),c:C.green},{l:'Нийт захиалга',v:String(allOrders.length),c:C.yellow},{l:'Дундаж/захиалга',v:allOrders.filter(o=>o.status==='served').length?formatPrice(Math.round(totalRevenue/allOrders.filter(o=>o.status==='served').length)):'—',c:'#5eead4'}].map(s=>(
+            <div key={s.l} style={{...CS,marginBottom:0,textAlign:'center' as const}}>
+              <p style={{color:s.c,fontWeight:'800',fontSize:'1.1rem',margin:'0 0 0.2rem'}}>{s.v}</p>
+              <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>{s.l}</p>
+            </div>
+          ))}
+        </div>
+        {/* Branch revenue breakdown */}
+        <div style={{...CS,marginBottom:'1rem'}}>
+          <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>🏢 Салбараар</p>
+          {branchRevMap.map((b,i)=>{
+            const pct=totalRevenue>0?Math.round(b.revenue/totalRevenue*100):0;
+            return<div key={b.id} style={{marginBottom:'0.6rem'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.2rem'}}>
+                <span style={{color:C.text,fontSize:'0.82rem',fontWeight:'700'}}>{b.name}{b.id===currentBranchId?' ✓':''}</span>
+                <span style={{color:C.green,fontSize:'0.82rem',fontWeight:'800'}}>{formatPrice(b.revenue)} <span style={{color:C.muted,fontWeight:'400'}}>({pct}%)</span></span>
+              </div>
+              <div style={{height:'6px',background:C.inpBg,borderRadius:'3px'}}><div style={{height:'100%',width:`${pct}%`,background:['#2ECC71','#3B82F6','#F59E0B','#8B5CF6'][i%4],borderRadius:'3px',transition:'width 0.3s'}}/></div>
+            </div>;
+          })}
+        </div>
+        {/* Top products */}
+        {topProducts.length>0&&<div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,overflow:'hidden'}}>
+          <div style={{padding:'0.875rem 1rem',borderBottom:`1px solid ${C.border}`}}>
+            <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:0}}>🍽️ Бүх салбарын нийт борлуулалт</p>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:'0.82rem'}}>
+            <thead><tr style={{background:'rgba(255,255,255,0.04)'}}>
+              {['#','Бүтээгдэхүүн','Тоо','Орлого'].map(h=><th key={h} style={{padding:'0.5rem 0.875rem',textAlign:'left' as const,color:C.muted,fontSize:'0.7rem',fontWeight:'600',borderBottom:`1px solid ${C.border}`}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{topProducts.map((p,i)=>(
+              <tr key={p.name} style={{borderBottom:`1px solid ${C.border}`}}>
+                <td style={{padding:'0.5rem 0.875rem',color:C.muted}}>{i+1}</td>
+                <td style={{padding:'0.5rem 0.875rem',color:'rgba(255,255,255,0.88)',fontWeight:'700'}}>{p.name}</td>
+                <td style={{padding:'0.5rem 0.875rem',color:C.yellow,fontWeight:'800'}}>{p.qty}ш</td>
+                <td style={{padding:'0.5rem 0.875rem',color:C.green,fontWeight:'800'}}>{formatPrice(p.rev)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>}
+        {topProducts.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'2.5rem'}}>💰</div><p>Борлуулалт байхгүй</p></div>}
+      </>}
 
-      {/* Branch cards */}
-      <div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap' as const}}>
-        {displayBranches.map(b=>(
-          <BranchStatCard
-            key={b.id}
-            branchId={b.id}
-            branchName={b.name}
-            isCurrent={b.isCurrent}
-            filterMs={fms[df]}
-            currentOrders={b.isCurrent?currentOrders:undefined}
-            currentSurveys={b.isCurrent?currentSurveys:undefined}
-          />
+      {/* ── TAB: COMPLAINTS ── */}
+      {activeTab==='complaints'&&<>
+        <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+          {[{k:'open',l:`🔴 Нээлттэй (${openComplaints.length})`,c:C.orange},{k:'closed',l:`✅ Шийдвэрлэсэн (${closedComplaints.length})`,c:C.green}].map(t=>(
+            <button key={t.k} onClick={()=>setCmplTab(t.k as any)} style={{padding:'0.5rem 1rem',borderRadius:'20px',border:`1px solid ${cmplTab===t.k?t.c:C.border}`,background:cmplTab===t.k?`${t.c}22`:'transparent',color:cmplTab===t.k?t.c:C.muted,fontWeight:cmplTab===t.k?'700':'500',cursor:'pointer',fontSize:'0.82rem'}}>{t.l}</button>
+          ))}
+        </div>
+        {curComplaints.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'2.5rem'}}>{cmplTab==='open'?'🎉':'📋'}</div><p>{cmplTab==='open'?'Нээлттэй гомдол байхгүй':'Шийдвэрлэсэн гомдол байхгүй'}</p></div>}
+        {curComplaints.map(s=>(
+          <div key={s.id} style={{...CS,padding:'1rem',borderLeft:`3px solid ${(s as any)._bId===currentBranchId?C.orange:'rgba(59,130,246,0.6)'}`}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.5rem'}}>
+              <div>
+                <span style={{fontSize:'0.72rem',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',padding:'0.15rem 0.5rem',borderRadius:'8px',fontWeight:'600'}}>{(s as any)._bName}</span>
+                <p style={{color:C.muted,fontSize:'0.72rem',margin:'0.2rem 0 0'}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
+              </div>
+              <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+                <span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span>
+                <span style={{padding:'0.2rem 0.5rem',borderRadius:'8px',fontSize:'0.68rem',fontWeight:'700',background:`${s.csat>=4?C.green:s.csat>=3?C.orange:C.red}22`,color:s.csat>=4?C.green:s.csat>=3?C.orange:C.red}}>{s.csat}/5</span>
+              </div>
+            </div>
+            {s.feedback&&<p style={{color:'rgba(255,255,255,0.8)',fontSize:'0.82rem',fontStyle:'italic',background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.5rem 0.75rem',margin:'0 0 0.5rem'}}>"{s.feedback}"</p>}
+            {cmplTab==='open'&&<button onClick={async()=>await setSurveyResolved((s as any)._bId,s.id,true,'')} style={{padding:'0.4rem 1rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>✅ Шийдвэрлэсэн тэмдэглэх</button>}
+          </div>
         ))}
-      </div>
+      </>}
     </div>
   );
 }
