@@ -1215,8 +1215,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   const lRef=useRef<HTMLInputElement>(null);
   useEffect(()=>{setTc(String(tables.length||5));},[tables.length]);
   useEffect(()=>{getSettings(branchId).then(s=>{if(s.qrTopText)setTop(s.qrTopText);if(s.qrBottomText)setBot(s.qrBottomText);if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);if((s as any).brandLogo)setLogo((s as any).brandLogo);});},[branchId]);
-  const saveQs=async(nq:string[])=>{
-    const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
   // Survey questions use saveSurveyQuestions (set() instead of update()) to avoid Firebase array stale key bug
   const saveQs=async(nq:string[])=>{await saveSurveyQuestions(branchId,nq);setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;const logoHtml=logo?`<img src="${logo}" style="width:60px;height:60px;object-fit:cover;border-radius:10px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto"/>`:'' ;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c">${logoHtml}<div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
@@ -1343,7 +1342,6 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [nPin,setNPin]=useState('');
   const [df,setDf]=useState<'today'|'7d'|'1m'|'3m'|'1y'>('7d');
   const pending=orders.filter(o=>o.status==='pending').length;
-  const effectivePending=effectiveOrders.filter(o=>o.status==='pending').length;
   const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?'Менежер':(staff?.name||'Ажилтан'),a,d||'');
 
   // ── Multi-branch: sibling branches + global branch filter ──
@@ -1415,6 +1413,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   const now=Date.now();
   const fms:{[k:string]:number}={today:86400000,'7d':604800000,'1m':2592000000,'3m':7776000000,'1y':31536000000};
+  const effectivePending=effectiveOrders.filter(o=>o.status==='pending').length;
   const fsv=effectiveSurveys.filter(s=>(now-s.createdAt)<=fms[df]);
   const npsArr=fsv.filter(s=>s.nps>=0).map(s=>s.nps);
   const nps=npsArr.length?Math.round(((npsArr.filter(n=>n>=9).length-npsArr.filter(n=>n<=6).length)/npsArr.length)*100):null;
@@ -1828,8 +1827,8 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
   const [siblingData,setSiblingData]=useState<Record<string,{orders:Order[];surveys:Survey[]}>>({});
   useEffect(()=>{
     const unsubs=siblingBranches.map(b=>{
-      const u1=subscribeToOrders(b.id,orders=>setSiblingData(p=>({...p,[b.id]:{...(p[b.id]||{}),orders}})));
-      const u2=subscribeToSurveys(b.id,surveys=>setSiblingData(p=>({...p,[b.id]:{...(p[b.id]||{}),surveys}})));
+      const u1=subscribeToOrders(b.id,orders=>setSiblingData(p=>{const prev=p[b.id]||{orders:[],surveys:[]};return{...p,[b.id]:{...prev,orders}};}));
+      const u2=subscribeToSurveys(b.id,surveys=>setSiblingData(p=>{const prev=p[b.id]||{orders:[],surveys:[]};return{...p,[b.id]:{...prev,surveys}};}));
       return[u1,u2];
     });
     return()=>unsubs.flat().forEach(u=>u());
