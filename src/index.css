@@ -1,45 +1,71 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-@import "tailwindcss";
+<!DOCTYPE html>
+<html lang="mn">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-@theme {
-  --font-sans: "Inter", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-}
+    <!-- PWA Meta tags -->
+    <meta name="theme-color" content="#E87B2F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ResMenu" />
+    <meta name="application-name" content="Ресторан Систем" />
+    <meta name="description" content="Ресторан менежментийн систем" />
+    <meta name="msapplication-TileColor" content="#E87B2F" />
 
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-}
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+    <!-- Favicon + Apple touch icons (generated SVG-based) -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
 
-/* Custom Scrollbar Styles for nested textareas and codes list */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+    <title>Ресторан Систем</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
 
-::-webkit-scrollbar-track {
-  background: rgba(241, 245, 249, 0.5);
-  border-radius: 4px;
-}
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => {
+              console.log('[PWA] Service worker registered', reg.scope);
+              // Check for updates every hour
+              setInterval(() => reg.update(), 60 * 60 * 1000);
+            })
+            .catch(err => console.warn('[PWA] SW registration failed:', err));
+        });
+      }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.8);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.9);
-}
-
+      // PWA install prompt (Android/Chrome)
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Show install button after 3 seconds if not already installed
+        setTimeout(() => {
+          if (deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+            const btn = document.createElement('div');
+            btn.id = 'pwa-install-banner';
+            btn.innerHTML = `
+              <div style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#E87B2F;color:white;padding:0.7rem 1.25rem;border-radius:20px;font-family:sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.35);display:flex;align-items:center;gap:0.5rem;white-space:nowrap">
+                📲 Апп болгон суулгах
+                <span onclick="document.getElementById('pwa-install-banner').remove()" style="opacity:0.7;margin-left:0.5rem;font-weight:400;font-size:0.8rem">✕</span>
+              </div>`;
+            btn.onclick = async () => {
+              deferredPrompt.prompt();
+              const { outcome } = await deferredPrompt.userChoice;
+              if (outcome === 'accepted') btn.remove();
+              deferredPrompt = null;
+            };
+            document.body.appendChild(btn);
+          }
+        }, 3000);
+      });
+    </script>
+  </body>
+</html>
