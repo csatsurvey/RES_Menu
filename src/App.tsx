@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Branch, Table, Order, Survey, Staff, MenuItem, Category,
-  getAllBranches, createBranch, getBranch, verifyManagerPin, verifyStaffPin,
+  getAllBranches, subscribeToBranches, createBranch, getBranch, verifyManagerPin, verifyStaffPin,
   setTables as setTablesDB, subscribeToTables,
   subscribeToOrders, subscribeToTableOrders, createOrder, updateOrderStatus,
   subscribeToSurveys, createSurvey, setSurveyResolved,
   subscribeToMenu, addMenuItem, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
   subscribeToCategories, saveCategory, updateCategory, deleteCategory,
-  getStaff, addStaff, removeStaff, updateStaff,
+  getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
+  getBranchLicenseStatus, LicenseCheck,
   getSalesReport,
-  getLicense, checkLicenseStatus, getManagerPassword, setManagerPassword, getBranchIdByLicense, getBranchLicenseStatus, LicenseCheck,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
 
 type SalesData = { totalRevenue:number; orderCount:number; avgOrder:number; products:{name:string;qty:number;revenue:number}[]; dailyRevenue:{date:string;revenue:number}[] };
 type AdminTab = 'dashboard'|'complaints'|'menu'|'categories'|'staff'|'orders'|'settings'|'sales'|'logs';
-type KFilter = 'all'|'pending'|'preparing'|'ready';
+type KFilter = 'all'|'pending'|'preparing'|'ready'|'served';
 type CartItem = { item:MenuItem; qty:number };
 
 const C = { bg:'#0d0d12', sidebar:'#111117', card:'#1a1a22', border:'rgba(255,255,255,0.08)', yellow:'#F5C120', orange:'#E87B2F', green:'#2ECC71', red:'#E74C3C', text:'#ffffff', muted:'rgba(255,255,255,0.5)', inpBg:'rgba(255,255,255,0.06)' };
@@ -64,20 +65,23 @@ function CSelect({value,onChange,options,placeholder,style}:{value:string;onChan
   </div>;
 }
 
-interface EBState { error: string | null }
-class ErrorBoundary extends React.Component<{children:React.ReactNode}, EBState> {
-  state: EBState = { error: null };
-  static getDerivedStateFromError(e: Error): EBState {
-    return { error: e.message + '\n' + e.stack };
-  }
-  render() {
-    if (this.state.error) {
-      return (
+// ════════════════════════════════════════════════════════════
+// ERROR BOUNDARY - catches runtime errors and shows them
+// ════════════════════════════════════════════════════════════
+interface EBState { error: string|null }
+class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> {
+  state: EBState = {error:null};
+  static getDerivedStateFromError(e:Error): EBState {return{error:e.message+'\n'+e.stack};}
+  componentDidCatch(e:Error,info:any){console.error('App Error:',e,info);}
+  render(){
+    const {error}=this.state;
+    if(error){
+      return(
         <div style={{minHeight:'100vh',background:'#0d0d12',display:'flex',alignItems:'center',justifyContent:'center',padding:'2rem'}}>
           <div style={{background:'#1a1a22',borderRadius:'16px',padding:'2rem',maxWidth:'700px',width:'100%',border:'1px solid rgba(231,76,60,0.4)'}}>
-            <h2 style={{color:'#E74C3C',margin:'0 0 1rem',fontSize:'1rem'}}>🚨 Алдаа — screenshot авч илгээнэ үү</h2>
-            <pre style={{color:'rgba(255,255,255,0.85)',fontSize:'0.72rem',background:'rgba(0,0,0,0.4)',padding:'1rem',borderRadius:'8px',overflow:'auto',maxHeight:'400px',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-              {this.state.error}
+            <h2 style={{color:'#E74C3C',margin:'0 0 1rem',fontSize:'1.1rem'}}>🚨 Runtime Error — надад screenshot илгээнэ үү</h2>
+            <pre style={{color:'rgba(255,255,255,0.8)',fontSize:'0.75rem',background:'rgba(0,0,0,0.4)',padding:'1rem',borderRadius:'8px',overflow:'auto',maxHeight:'400px',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+              {error}
             </pre>
             <button onClick={()=>window.location.reload()} style={{marginTop:'1rem',padding:'0.6rem 1.5rem',background:'#E87B2F',color:'white',border:'none',borderRadius:'8px',cursor:'pointer',fontWeight:'700'}}>
               🔄 Дахин ачаалах
@@ -91,7 +95,7 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode}, EBState>
   }
 }
 
-function AppRoot() {
+function AppInner() {
   const [view,setView]=useState<'landing'|'customer'|'admin'>('landing');
   const [branchId,setBranchId]=useState('');
   const [tableNum,setTableNum]=useState(0);
@@ -104,163 +108,74 @@ function AppRoot() {
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
   },[]);
   const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
+  // Fetch license when entering admin view
+  const goAdmin=(id:string,isMan:boolean,s:Staff|null)=>{
+    if(isMan){setIsManager(true);}else{setStaff(s);}
+    setBranchId(id);setView('admin');
+    getBranchLicenseStatus(id).then(setLicense);
+  };
   if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
   if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>;
-  return <LandingView onManager={(id,lic)=>{setBranchId(id);setIsManager(true);setLicense(lic);setView('admin');}} onStaff={(id,s)=>{setBranchId(id);setStaff(s);getBranchLicenseStatus(id).then(setLicense);setView('admin');}}/>;
+  return <LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
 }
 
-function LandingView({onManager,onStaff}:{onManager:(id:string,lic:LicenseCheck)=>void;onStaff:(id:string,s:Staff)=>void}) {
+function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
   const [branches,setBranches]=useState<Branch[]>([]);
-  const [mode,setMode]=useState<'select'|'manager'|'staff'>('select');
-  // Manager states
-  const [licKey,setLicKey]=useState('');
-  const [mStep,setMStep]=useState<'key'|'create'|'login'>('key');
-  const [mPass,setMPass]=useState('');
-  const [mPass2,setMPass2]=useState('');
-  const [mBranchName,setMBranchName]=useState('');
-  const [mBranchId,setMBranchId]=useState('');
-  // Staff states
+  const [mode,setMode]=useState<'select'|'manager'|'staff'|'new'>('select');
   const [branchId,setBranchId]=useState('');
   const [pin,setPin]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-
+  const [n,setN]=useState({name:'',addr:'',pin:''});
   useEffect(()=>{
-    // Load licenseKey branches for staff
-    getAllBranches().then(all=>setBranches(all.filter((b:any)=>b.licenseKey)));
-    // Auto-fill saved license key for manager
-    const saved=localStorage.getItem('rms_licKey');
-    if(saved){setLicKey(saved);}
+    const unsub = subscribeToBranches(setBranches);
+    return unsub;
   },[]);
 
-  const checkLicKey=async(keyOverride?:string)=>{
-    const k=(keyOverride||licKey).trim().toUpperCase();
-    if(!k)return setError('Лицензийн түлхүүр оруулна уу');
-    setLoading(true);setError('');
-    try{
-      const lic=await getLicense(k);
-      if(!lic){setLoading(false);return setError('Түлхүүр олдсонгүй');}
-      const chk=checkLicenseStatus(lic);
-      if(!chk.valid){setLoading(false);return setError(chk.message);}
-      const bid=await getBranchIdByLicense(k);
-      if(!bid){setLoading(false);return setError('Салбар холбоогүй байна');}
-      setMBranchName(lic.branchName||'');
-      setMBranchId(bid);
-      const pwd=await getManagerPassword(k);
-      setMStep(pwd?'login':'create');
-    }catch(e){setError('Алдаа: '+String(e));}
-    setLoading(false);
-  };
-
-  // Auto-check on mount if saved key exists
-  useEffect(()=>{
-    const saved=localStorage.getItem('rms_licKey');
-    if(saved&&mode==='manager'){checkLicKey(saved);}
-  },[mode]);
-
-  const sha256=async(s:string)=>{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');};
-
-  const createPwd=async()=>{
-    if(mPass.length<6)return setError('Нууц үг дор хаяж 6 тэмдэгт');
-    if(mPass!==mPass2)return setError('Нууц үг таарахгүй');
-    setLoading(true);setError('');
-    try{
-      await setManagerPassword(licKey.trim().toUpperCase(),await sha256(mPass));
-      localStorage.setItem('rms_licKey',licKey.trim().toUpperCase());
-      const lic=await getBranchLicenseStatus(mBranchId);
-      onManager(mBranchId,lic);
-    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
-  };
-
-  const loginPwd=async()=>{
-    if(!mPass)return;
-    setLoading(true);setError('');
-    try{
-      const hash=await sha256(mPass);
-      const stored=await getManagerPassword(licKey.trim().toUpperCase());
-      if(stored!==hash){setLoading(false);return setError('Нууц үг буруу байна');}
-      localStorage.setItem('rms_licKey',licKey.trim().toUpperCase());
-      const licCheck=await getBranchLicenseStatus(mBranchId);
-      onManager(mBranchId,licCheck);
-    }catch(e){setError('Алдаа: '+String(e));setLoading(false);}
-  };
-
-  const loginStaff=async()=>{
+  const login=async(type:'manager'|'staff')=>{
     if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
     setLoading(true);
-    const s=await verifyStaffPin(branchId,pin);
-    setLoading(false);
-    return s?onStaff(branchId,s):setError('PIN буруу байна');
+    if(type==='manager'){const ok=await verifyManagerPin(branchId,pin);setLoading(false);if(!ok)return setError('PIN буруу');return onManager(branchId);}
+    const s=await verifyStaffPin(branchId,pin);setLoading(false);if(!s)return setError('PIN буруу');return onStaff(branchId,s);
   };
-
+  const create=async()=>{
+    if(!n.name||!n.pin||n.pin.length<4)return setError('Нэр болон 4+ PIN шаардлагатай');
+    setLoading(true);
+    try{
+      const id=await createBranch(n.name,n.addr,n.pin);
+      for(const item of SEED)await addMenuItem(id,item);
+      let so=0;for(const nm of SEED_CATS){await saveCategory(id,nm);so++;}
+      await setTablesDB(id,5);onManager(id);
+    }catch{setError('Алдаа гарлаа');setLoading(false);}
+  };
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div style={{width:'100%',maxWidth:'400px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
-        <div style={{textAlign:'center',marginBottom:'1.75rem'}}>
+      <div style={{width:'100%',maxWidth:'380px',background:C.card,borderRadius:'20px',padding:'2rem',border:`1px solid ${C.border}`}}>
+        <div style={{textAlign:'center',marginBottom:'2rem'}}>
           <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🍽️</div>
-          <h1 style={{fontSize:'1.35rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
-          <p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
+          <h1 style={{fontSize:'1.4rem',fontWeight:'800',color:C.yellow,margin:'0 0 0.25rem',letterSpacing:'0.05em'}}>РЕСТОРАН СИСТЕМ</h1>
+          <p style={{color:C.muted,fontSize:'0.8rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
         </div>
-
-        {/* MODE SELECT */}
-        {mode==='select'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
-            <span style={{fontSize:'1.4rem'}}>👔</span>
-            <div><div>Менежер нэвтрэх</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Лицензийн түлхүүр + нууц үг</div></div>
-          </button>
-          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'rgba(46,204,113,0.12)',color:C.green,border:`1px solid ${C.green}44`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.75rem'}}>
-            <span style={{fontSize:'1.4rem'}}>👨‍🍳</span>
-            <div><div>Тогооч / Зөөгч</div><div style={{fontSize:'0.72rem',fontWeight:'500',opacity:0.75}}>Ажилтны PIN код</div></div>
-          </button>
+        {mode==='select'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👔 Менежер нэвтрэх</button>
+          <button onClick={()=>setMode('staff')} style={{padding:'0.875rem',background:'#1a5c3a',color:C.green,border:`1px solid ${C.green}`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👨‍🍳 Тогооч / Зөөгч</button>
+          <button onClick={()=>setMode('new')} style={{padding:'0.875rem',background:'transparent',border:`1px dashed ${C.border}`,borderRadius:'14px',color:C.muted,fontWeight:'600',cursor:'pointer'}}>➕ Шинэ салбар үүсгэх</button>
         </div>}
-
-        {/* MANAGER: key step */}
-        {mode==='manager'&&mStep==='key'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <div style={{background:`${C.yellow}15`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.yellow}33`}}>
-            <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:'0 0 0.1rem',letterSpacing:'0.04em'}}>🔑 ЛИЦЕНЗИЙН ТҮЛХҮҮР</p>
-            <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>Администратороос авсан түлхүүрийг оруулна уу</p>
-          </div>
-          {loading?<div style={{textAlign:'center' as const,padding:'1rem',color:C.muted}}>⏳ Шалгаж байна...</div>:<>
-            <input value={licKey} onChange={e=>setLicKey(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&checkLicKey()} placeholder="RES-XXXX-XXXX-XXXX" style={{...IS,fontFamily:'monospace',fontSize:'0.95rem',letterSpacing:'0.06em',textAlign:'center' as const}}/>
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-            <button onClick={()=>checkLicKey()} disabled={!licKey.trim()} style={{padding:'0.875rem',background:licKey.trim()?C.orange:C.inpBg,color:licKey.trim()?'white':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer'}}>Үргэлжлүүлэх →</button>
-            <button onClick={()=>{setMode('select');setError('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-          </>}
-        </div>}
-
-        {/* MANAGER: create password */}
-        {mode==='manager'&&mStep==='create'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <div style={{background:`${C.green}12`,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.green}33`}}>
-            <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.1rem',fontSize:'0.875rem'}}>✅ {mBranchName}</p>
-            <p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>Анх удаа нэвтрэж байна — нууц үгээ үүсгэнэ үү</p>
-          </div>
-          <input type="password" value={mPass} onChange={e=>setMPass(e.target.value)} placeholder="Нууц үг (6+ тэмдэгт)" style={IS}/>
-          <input type="password" value={mPass2} onChange={e=>setMPass2(e.target.value)} onKeyDown={e=>e.key==='Enter'&&createPwd()} placeholder="Нууц үг давтах" style={IS}/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-          <button onClick={createPwd} disabled={loading||!mPass||!mPass2} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.7:1}}>{loading?'Үүсгэж байна...':'🔐 Нууц үг үүсгэж нэвтрэх'}</button>
-          <button onClick={()=>{setMStep('key');setError('');setMPass('');setMPass2('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
-        </div>}
-
-        {/* MANAGER: login with password */}
-        {mode==='manager'&&mStep==='login'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
-          <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.65rem 0.875rem',border:`1px solid ${C.border}`}}>
-            <p style={{color:C.yellow,fontWeight:'800',margin:'0 0 0.1rem',fontSize:'0.875rem'}}>{mBranchName}</p>
-            <p style={{color:C.muted,fontFamily:'monospace',fontSize:'0.72rem',margin:0}}>{licKey}</p>
-          </div>
-          <input type="password" value={mPass} onChange={e=>{setMPass(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginPwd()} placeholder="Нууц үг" style={IS} autoFocus/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-          <button onClick={loginPwd} disabled={loading||!mPass} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'🔓 Нэвтрэх'}</button>
-          <button onClick={()=>{setMStep('key');setMPass('');setError('');localStorage.removeItem('rms_licKey');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Өөр түлхүүр оруулах</button>
-        </div>}
-
-        {/* STAFF */}
-        {mode==='staff'&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.875rem'}}>
-          <div style={{background:`${C.green}12`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.6rem 0.875rem',textAlign:'center' as const,fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>👨‍🍳 Ажилтан нэвтрэх</div>
-          <CSelect value={branchId} onChange={v=>{setBranchId(v);setError('');}} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
-          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginStaff()} placeholder="PIN код" style={IS}/>
-          {error&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,background:`${C.red}11`,padding:'0.5rem 0.75rem',borderRadius:'8px'}}>{error}</p>}
-          <button onClick={loginStaff} disabled={loading} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтэрч байна...':'Нэвтрэх'}</button>
+        {(mode==='manager'||mode==='staff')&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <div style={{background:`${mode==='manager'?C.orange:C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:mode==='manager'?C.orange:C.green,fontSize:'0.85rem'}}>{mode==='manager'?'👔 Менежер':'👨‍🍳 Ажилтан'}</div>
+          <CSelect value={branchId} onChange={setBranchId} placeholder="Салбар сонгоно уу" options={branches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
+          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&login(mode)} placeholder="PIN оруулна уу" style={IS}/>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+          <button onClick={()=>login(mode)} disabled={loading} style={{padding:'0.875rem',background:mode==='manager'?C.orange:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтрэж байна...':'Нэвтрэх'}</button>
           <button onClick={()=>{setMode('select');setError('');setPin('');setBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+        </div>}
+        {mode==='new'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <input value={n.name} onChange={e=>setN(v=>({...v,name:e.target.value}))} placeholder="Салбарын нэр *" style={IS}/>
+          <input value={n.addr} onChange={e=>setN(v=>({...v,addr:e.target.value}))} placeholder="Хаяг" style={IS}/>
+          <input type="password" value={n.pin} onChange={e=>setN(v=>({...v,pin:e.target.value}))} placeholder="Менежерийн PIN (4+) *" style={IS}/>
+          {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+          <button onClick={create} disabled={loading} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Үүсгэж байна...':'✅ Салбар үүсгэх'}</button>
+          <button onClick={()=>{setMode('select');setError('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
       </div>
     </div>
@@ -499,20 +414,29 @@ function OrderCard({o,branchId}:{o:Order;branchId:string}) {
 function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
   const [sf,setSf]=useState<KFilter>('all');
   const [df,setDf]=useState<'today'|'all'>('today');
+  const [showServed,setShowServed]=useState(false);
   const ts=new Date();ts.setHours(0,0,0,0);
-  const active=orders.filter(o=>o.status!=='served').filter(o=>df==='today'?o.createdAt>=ts.getTime():true).sort((a,b)=>a.createdAt-b.createdAt);
-  const filtered=sf==='all'?active:active.filter(o=>o.status===sf);
+  const todayOrders=df==='today'?orders.filter(o=>o.createdAt>=ts.getTime()):orders;
+  const active=todayOrders.filter(o=>o.status!=='served').sort((a,b)=>a.createdAt-b.createdAt);
+  const served=todayOrders.filter(o=>o.status==='served').sort((a,b)=>b.updatedAt-a.updatedAt);
+  const filtered=sf==='served'?served:sf==='all'?active:active.filter(o=>o.status===sf);
   const cnt={pending:active.filter(o=>o.status==='pending').length,preparing:active.filter(o=>o.status==='preparing').length,ready:active.filter(o=>o.status==='ready').length};
   return(
     <div>
       <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.75rem',flexWrap:'wrap' as const,alignItems:'center'}}>
         {[{k:'today',l:'📅 Өнөөдөр'},{k:'all',l:'Бүгд'}].map(t=><button key={t.k} onClick={()=>setDf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${df===t.k?C.yellow:C.border}`,background:df===t.k?`${C.yellow}22`:'transparent',color:df===t.k?C.yellow:C.muted,fontWeight:df===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>{t.l}</button>)}
-        <span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.75rem',marginLeft:'0.25rem'}}>{active.length} захиалга</span>
+        <span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.75rem',marginLeft:'0.25rem'}}>{active.length} идэвхтэй</span>
+        <button onClick={()=>setSf(sf==='served'?'all':'served')} style={{marginLeft:'auto',padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf==='served'?'#6B7280':'rgba(255,255,255,0.15)'}`,background:sf==='served'?'rgba(107,114,128,0.22)':'transparent',color:sf==='served'?'#9CA3AF':C.muted,fontWeight:sf==='served'?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>
+          📦 Хүргэгдсэн ({served.length})
+        </button>
       </div>
-      <div style={{display:'flex',gap:'0.4rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
+      {sf!=='served'&&<div style={{display:'flex',gap:'0.4rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
         {[{k:'all',l:`📋 Бүгд (${active.length})`,c:C.yellow},{k:'pending',l:`🟡 Хүлээж (${cnt.pending})`,c:'#F59E0B'},{k:'preparing',l:`🔵 Бэлтгэж (${cnt.preparing})`,c:'#3B82F6'},{k:'ready',l:`🟢 Бэлэн (${cnt.ready})`,c:'#10B981'}].map(t=><button key={t.k} onClick={()=>setSf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf===t.k?t.c:C.border}`,background:sf===t.k?`${t.c}22`:'transparent',color:sf===t.k?t.c:C.muted,fontWeight:sf===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem',whiteSpace:'nowrap' as const}}>{t.l}</button>)}
-      </div>
-      {filtered.length===0&&<div style={{textAlign:'center',padding:'4rem 2rem',color:C.muted}}><div style={{fontSize:'3.5rem',marginBottom:'0.75rem'}}>🎉</div><p style={{fontWeight:'700'}}>Захиалга байхгүй</p></div>}
+      </div>}
+      {sf==='served'&&<div style={{background:'rgba(107,114,128,0.12)',borderRadius:'10px',padding:'0.6rem 1rem',marginBottom:'1rem',border:'1px solid rgba(107,114,128,0.25)'}}>
+        <p style={{color:'#9CA3AF',fontSize:'0.78rem',margin:0}}>📦 Хүргэгдсэн захиалгын архив — {served.length} захиалга</p>
+      </div>}
+      {filtered.length===0&&<div style={{textAlign:'center',padding:'4rem 2rem',color:C.muted}}><div style={{fontSize:'3.5rem',marginBottom:'0.75rem'}}>{sf==='served'?'📦':'🎉'}</div><p style={{fontWeight:'700'}}>{sf==='served'?'Хүргэгдсэн захиалга байхгүй':'Захиалга байхгүй'}</p></div>}
       {filtered.map(o=><div key={o.id}><OrderCard o={o} branchId={branchId}/></div>)}
     </div>
   );
@@ -537,6 +461,14 @@ function SimpleBarChart({data}:{data:{name:string;qty:number;revenue:number}[]})
 
 const SF=[{k:'today',l:'Өнөөдөр',ms:86400000},{k:'7d',l:'7 хоног',ms:604800000},{k:'14d',l:'14 хоног',ms:1209600000},{k:'1m',l:'1 сар',ms:2592000000},{k:'3m',l:'3 сар',ms:7776000000},{k:'6m',l:'6 сар',ms:15552000000},{k:'12m',l:'12 сар',ms:31536000000},{k:'custom',l:'Сонголтот',ms:0}];
 
+const getDateRangeStr=(filter:string,fd:string,td:string):string=>{
+  if(filter==='custom'&&fd&&td)return `${fd} — ${td}`;
+  const f=SF.find(x=>x.k===filter);if(!f)return '';
+  const from=new Date(Date.now()-f.ms);
+  const to=new Date();
+  return `${from.toLocaleDateString('mn-MN')} — ${to.toLocaleDateString('mn-MN')}`;
+};
+
 function SalesTab({branchId}:{branchId:string}) {
   const [filter,setFilter]=useState('today');
   const [fd,setFd]=useState('');
@@ -557,34 +489,34 @@ function SalesTab({branchId}:{branchId:string}) {
   };
   useEffect(()=>{load();},[filter,fd,td]);
 
+  const dateLabel=getDateRangeStr(filter,fd,td);
+
   const expPDF=()=>{
     if(!data)return;const w=window.open('','_blank');if(!w)return;
     const rows=data.products.map((p,i)=>`<tr><td>${i+1}</td><td>${p.name}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${formatPrice(p.revenue)}</td></tr>`).join('');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Борлуулалтын тайлан</title><style>body{font-family:sans-serif;padding:24px}h1{color:#E87B2F}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 12px;border:1px solid #ddd}th{background:#f5f5f5}.sum{display:flex;gap:16px;margin:16px 0}.card{border:1px solid #ddd;border-radius:8px;padding:12px;min-width:120px}.v{font-size:1.4rem;font-weight:bold;color:#E87B2F;margin:0}.l{font-size:.75rem;color:#666;margin:4px 0 0}</style></head><body><h1>Борлуулалтын тайлан</h1><p>${SF.find(f=>f.k===filter)?.l||fd+' - '+td}</p><div class="sum"><div class="card"><p class="v">${formatPrice(data.totalRevenue)}</p><p class="l">Нийт орлого</p></div><div class="card"><p class="v">${data.orderCount}</p><p class="l">Захиалга</p></div><div class="card"><p class="v">${formatPrice(data.avgOrder)}</p><p class="l">Дундаж</p></div></div><table><thead><tr><th>#</th><th>Бүтээгдэхүүн</th><th>Тоо ш</th><th>Орлого</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2"><b>Нийт</b></td><td style="text-align:center"><b>${data.products.reduce((s,p)=>s+p.qty,0)}</b></td><td style="text-align:right"><b>${formatPrice(data.totalRevenue)}</b></td></tr></tfoot></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Борлуулалтын тайлан</title><style>body{font-family:sans-serif;padding:24px}h1{color:#E87B2F}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 12px;border:1px solid #ddd}th{background:#f5f5f5}.sum{display:flex;gap:16px;margin:16px 0}.card{border:1px solid #ddd;border-radius:8px;padding:12px;min-width:120px}.v{font-size:1.4rem;font-weight:bold;color:#E87B2F;margin:0}.l{font-size:.75rem;color:#666;margin:4px 0 0}</style></head><body><h1>Борлуулалтын тайлан</h1><p>${dateLabel||SF.find(f=>f.k===filter)?.l||''}</p><div class="sum"><div class="card"><p class="v">${formatPrice(data.totalRevenue)}</p><p class="l">Нийт орлого</p></div><div class="card"><p class="v">${data.orderCount}</p><p class="l">Захиалга</p></div><div class="card"><p class="v">${formatPrice(data.avgOrder)}</p><p class="l">Дундаж</p></div></div><table><thead><tr><th>#</th><th>Бүтээгдэхүүн</th><th>Тоо ш</th><th>Орлого</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2"><b>Нийт</b></td><td style="text-align:center"><b>${data.products.reduce((s,p)=>s+p.qty,0)}</b></td><td style="text-align:right"><b>${formatPrice(data.totalRevenue)}</b></td></tr></tfoot></table><script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   };
+
   const expXLSX=()=>{
     if(!data)return;
-    // Build CSV as fallback (no external dependency needed)
-    const rows=[
-      ['Борлуулалтын тайлан'],
-      ['Нийт орлого',data.totalRevenue,'Захиалга',data.orderCount,'Дундаж',data.avgOrder],
-      [],
-      ['#','Бүтээгдэхүүн','Тоо ш','Орлого'],
-      ...data.products.map((p,i)=>[i+1,p.name,p.qty,p.revenue]),
-      [],
-      ['Нийт','',data.products.reduce((s,p)=>s+p.qty,0),data.totalRevenue],
+    const summaryRows=[
+      {'Үзүүлэлт':'Нийт орлого','Утга':data.totalRevenue},
+      {'Үзүүлэлт':'Захиалгын тоо','Утга':data.orderCount},
+      {'Үзүүлэлт':'Дундаж захиалга','Утга':data.avgOrder},
     ];
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download=`sales_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.csv`;
-    a.click();URL.revokeObjectURL(a.href);
+    const productRows=data.products.map((p,i)=>({'#':i+1,'Бүтээгдэхүүн':p.name,'Тоо ш':p.qty,'Орлого (₮)':p.revenue}));
+    const wb=XLSX.utils.book_new();
+    const wsSum=XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb,wsSum,'Хураангуй');
+    const wsProd=XLSX.utils.json_to_sheet(productRows);
+    XLSX.utils.book_append_sheet(wb,wsProd,'Бүтээгдэхүүн');
+    XLSX.writeFile(wb,`sales_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.xlsx`);
   };
 
   return(
     <div>
-      <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap' as const,marginBottom:'1rem',alignItems:'center'}}>
+      <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap' as const,marginBottom:'0.5rem',alignItems:'center'}}>
         {SF.map(f=><button key={f.k} onClick={()=>setFilter(f.k)} style={{padding:'0.38rem 0.75rem',borderRadius:'20px',border:`1px solid ${filter===f.k?C.yellow:C.border}`,background:filter===f.k?`${C.yellow}22`:'transparent',color:filter===f.k?C.yellow:C.muted,fontWeight:filter===f.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{f.l}</button>)}
         {filter==='custom'&&<>
           <input type="date" value={fd} onChange={e=>setFd(e.target.value)} style={{...IS,width:'140px',padding:'0.38rem 0.6rem',fontSize:'0.78rem'}}/>
@@ -593,9 +525,13 @@ function SalesTab({branchId}:{branchId:string}) {
         </>}
         <div style={{marginLeft:'auto',display:'flex',gap:'0.4rem'}}>
           <button onClick={expPDF} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'8px',color:C.red,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📄 PDF</button>
-          <button onClick={expXLSX} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📊 CSV</button>
+          <button onClick={expXLSX} disabled={!data} style={{padding:'0.38rem 0.75rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>📊 XLSX</button>
         </div>
       </div>
+      {dateLabel&&<div style={{marginBottom:'0.75rem',padding:'0.4rem 0.875rem',background:'rgba(245,193,32,0.08)',border:'1px solid rgba(245,193,32,0.2)',borderRadius:'8px',display:'inline-flex',alignItems:'center',gap:'0.5rem'}}>
+        <span style={{fontSize:'0.7rem',color:C.muted}}>📅</span>
+        <span style={{fontSize:'0.78rem',color:C.yellow,fontWeight:'700'}}>{dateLabel}</span>
+      </div>}
       {err&&<div style={{background:`${C.red}11`,border:`1px solid ${C.red}33`,borderRadius:'10px',padding:'0.875rem',color:C.red,fontSize:'0.82rem',marginBottom:'1rem'}}>⚠️ {err}</div>}
       {loading&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}>⏳ Ачаалж байна...</div>}
       {data&&!loading&&<>
@@ -740,7 +676,7 @@ function MenuTab({branchId,menuItems,cats,onEdit,onDel,onNew,logAct}:{branchId:s
               <div style={{display:'flex',gap:'0.4rem',marginTop:'0.6rem',alignItems:'center'}}>
                 <button onClick={()=>onEdit(item)} style={{flex:1,padding:'0.38rem',border:`1px solid ${C.border}`,borderRadius:'6px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.72rem'}}>✏️ Засах</button>
                 <Toggle on={item.available} onChange={()=>tog(item)}/>
-                <button onClick={()=>onDel(item.id||'')} style={{width:'30px',height:'30px',border:'none',borderRadius:'6px',background:`${C.red}22`,color:C.red,cursor:'pointer',fontSize:'0.75px'}}>🗑</button>
+                <button onClick={()=>onDel(item.id||'')} style={{width:'32px',height:'32px',border:'none',borderRadius:'6px',background:C.red,color:'white',cursor:'pointer',fontSize:'0.95rem',display:'flex',alignItems:'center',justifyContent:'center'}}>🗑</button>
               </div>
             </div>
           </div>
@@ -877,6 +813,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
         {logo?<div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.5rem'}}>
           <img src={logo} alt="logo" style={{width:'64px',height:'64px',borderRadius:'10px',objectFit:'cover',border:`1px solid ${C.border}`}}/>
           <button onClick={()=>setLogo('')} style={{padding:'0.35rem 0.75rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>✕ Устгах</button>
+          <button onClick={async()=>{await saveSettings(branchId,{brandLogo:logo} as any);setSaved(true);setTimeout(()=>setSaved(false),2000);}} style={{padding:'0.35rem 0.875rem',background:C.orange,border:'none',color:'white',borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem',fontWeight:'700'}}>💾 Хадгалах</button>
         </div>
         :<div onClick={()=>lRef.current?.click()} style={{height:'64px',border:`2px dashed ${C.border}`,borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:'0.5rem',marginBottom:'0.5rem'}} onMouseOver={e=>{e.currentTarget.style.borderColor=C.yellow;}} onMouseOut={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.08)';}}>
           <span style={{fontSize:'1.5rem'}}>🏷️</span><span style={{color:C.muted,fontSize:'0.82rem'}}>Лого зураг оруулах</span>
@@ -932,7 +869,41 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   );
 }
 
-function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license?:LicenseCheck|null;onLogout:()=>void}) {
+
+function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;onLog:(a:string,d:string)=>void}) {
+  const [note,setNote]=useState('');
+  const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
+  return(
+    <div style={{...CS,padding:'1.25rem'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
+        <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
+        {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
+      </div>
+      <div style={{marginBottom:'0.75rem'}}>
+        {QS.filter(q=>(s as any)[q.k]).map(q=>(
+          <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+            <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
+            <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
+          </div>
+        ))}
+        <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
+          <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
+          <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
+        </div>
+      </div>
+      {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
+      {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
+        <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);onLog('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
+      </div>}
+      {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
+        {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
+        <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
+      </div>}
+    </div>
+  );
+}
+function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -954,14 +925,14 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   useEffect(()=>{
     getBranch(branchId).then(b=>b&&setBName(b.name));
-    getStaff(branchId).then(setStaffList);
     const u1=subscribeToSurveys(branchId,setSurveys);
     const u2=subscribeToOrders(branchId,setOrders);
     const u3=subscribeToMenu(branchId,setMenuItems);
     const u4=subscribeToTables(branchId,setTables);
     const u5=subscribeToLogs(branchId,setLogs);
     const u6=subscribeToCategories(branchId,setCats);
-    return()=>{u1();u2();u3();u4();u5();u6();};
+    const u7=subscribeToStaff(branchId,setStaffList);
+    return()=>{u1();u2();u3();u4();u5();u6();u7();};
   },[branchId]);
 
   const now=Date.now();
@@ -985,43 +956,49 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     {id:'logs',label:'Үйл ажиллагааны лог',icon:'📜',mo:true},
   ] as const;
 
-  const wPhone=surveys.filter(s=>s.phone&&s.phone.trim());
   const [cTab,setCTab]=useState<'p'|'r'|'a'>('p');
-  const cpd=wPhone.filter(s=>!s.resolved),crs=wPhone.filter(s=>s.resolved),can=surveys.filter(s=>!s.phone||!s.phone.trim());
+  const [surveyDf,setSurveyDf]=useState<'7d'|'14d'|'1m'|'custom'>('7d');
+  const [surveyFrom,setSurveyFrom]=useState('');
+  const [surveyTo,setSurveyTo]=useState('');
 
-  function SCard({s,sa}:{s:Survey;sa:boolean}) {
-    const [note,setNote]=useState('');
-    const QS=[{k:'foodQuality',l:'Хоолны амт'},{k:'ambiance',l:'Орчин байдал'},{k:'staffAttitude',l:'Ажилтан хандлага'},{k:'priceValue',l:'Үнэ/Чанар'},{k:'service',l:'Нийт ханамж'}];
-    return(
-      <div style={{...CS,padding:'1.25rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.875rem'}}>
-          <p style={{color:'rgba(255,255,255,0.55)',fontSize:'0.78rem',margin:0}}>{formatDate(s.createdAt)} {formatTime(s.createdAt)}</p>
-          {s.phone&&<div style={{display:'flex',alignItems:'center',gap:'0.4rem',background:`${C.green}18`,border:`1px solid ${C.green}55`,borderRadius:'8px',padding:'0.35rem 0.8rem'}}><span style={{color:C.green,fontWeight:'800',fontSize:'0.85rem'}}>📞 {s.phone}</span></div>}
-        </div>
-        <div style={{marginBottom:'0.75rem'}}>
-          {QS.filter(q=>(s as any)[q.k]).map(q=>(
-            <div key={q.k} style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-              <span style={{color:'rgba(255,255,255,0.75)'}}>{q.l}</span>
-              <span style={{color:(s as any)[q.k]>=4?C.green:(s as any)[q.k]>=3?C.yellow:C.red,fontWeight:'800'}}>{(s as any)[q.k]}/5</span>
-            </div>
-          ))}
-          <div style={{display:'flex',justifyContent:'space-between',padding:'0.25rem 0',fontSize:'0.82rem'}}>
-            <span style={{color:'rgba(255,255,255,0.75)'}}>NPS</span>
-            <span style={{color:s.nps>=9?C.green:s.nps<=6?C.red:C.yellow,fontWeight:'800'}}>{s.nps}/10</span>
-          </div>
-        </div>
-        {s.feedback&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'0.75rem',marginBottom:'0.75rem',border:'1px solid rgba(255,255,255,0.07)'}}><p style={{color:'rgba(255,255,255,0.88)',fontSize:'0.85rem',margin:0,fontStyle:'italic'}}>"{s.feedback}"</p></div>}
-        {sa&&<div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
-          <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Шийдвэрлэлтийн тэмдэглэл..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
-          <button onClick={async()=>{await setSurveyResolved(branchId,s.id,true,note);logAct('Гомдол шийдвэрлэгдлэв',s.phone||'');}} style={{padding:'0.5rem 1rem',background:C.green,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.8rem',whiteSpace:'nowrap' as const}}>Шийдсэн</button>
-        </div>}
-        {s.resolved&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.5rem'}}>
-          {s.resolvedNote&&<p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.75rem',margin:0}}>📝 {s.resolvedNote}</p>}
-          <button onClick={()=>setSurveyResolved(branchId,s.id,false)} style={{padding:'0.35rem 0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>Буцаах</button>
-        </div>}
-      </div>
-    );
-  }
+  // Date-filtered surveys for complaints
+  const filteredSurveys=React.useMemo(()=>{
+    if(surveyDf==='custom'&&surveyFrom&&surveyTo){
+      const from=new Date(surveyFrom).getTime();
+      const to=new Date(surveyTo).getTime()+86399999;
+      return surveys.filter(s=>s.createdAt>=from&&s.createdAt<=to);
+    }
+    const ms:Record<string,number>={'7d':604800000,'14d':1209600000,'1m':2592000000};
+    return surveys.filter(s=>(now-s.createdAt)<=(ms[surveyDf]||604800000));
+  },[surveys,surveyDf,surveyFrom,surveyTo,now]);
+
+  const expSurveysXLSX=()=>{
+    const rows=filteredSurveys.map(s=>({
+      'Огноо':formatDate(s.createdAt),
+      'Цаг':formatTime(s.createdAt),
+      'Ширээ':s.tableNumber,
+      'Хоолны амт':s.foodQuality,
+      'Орчин':s.ambiance,
+      'Ажилтан':s.staffAttitude,
+      'Үнэ/Чанар':s.priceValue,
+      'Үйлчилгээ':s.service,
+      'CSAT':s.csat,
+      'NPS':s.nps,
+      'Санал':s.feedback||'',
+      'Утас':s.phone||'',
+      'Шийдвэрлэсэн':s.resolved?'Тийм':'Үгүй',
+    }));
+    const ws=XLSX.utils.json_to_sheet(rows);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Санал хүсэлт');
+    XLSX.writeFile(wb,`survey_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.xlsx`);
+  };
+
+  const wPhone=filteredSurveys.filter(s=>s.phone&&s.phone.trim());
+  const cpd=wPhone.filter(s=>!s.resolved),crs=wPhone.filter(s=>s.resolved),can=filteredSurveys.filter(s=>!s.phone||!s.phone.trim());
+
+
+  // SCard is defined outside AdminPanel (see below)
 
   const curSurveys=cTab==='p'?cpd:cTab==='r'?crs:can;
 
@@ -1039,10 +1016,25 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             </button>
           ))}
         </nav>
-        <button onClick={onLogout} style={{margin:'1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
+        {license!==null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.6rem 0.75rem',borderRadius:'8px',background:license.valid?(license.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${license.valid?(license.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
+          <p style={{color:license.valid?(license.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.75rem',fontWeight:'800',margin:0,lineHeight:1.3}}>{license.message||'Шалгаж байна...'}</p>
+        </div>}
+        {license===null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.5rem 0.65rem',borderRadius:'8px',background:`${C.yellow}18`,border:`1px solid ${C.yellow}33`}}>
+          <p style={{color:C.yellow,fontSize:'0.72rem',fontWeight:'700',margin:0}}>⏳ Лиценз шалгаж байна...</p>
+        </div>}
+        <button onClick={onLogout} style={{margin:'0.5rem 1rem 1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
       </div>
       <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto' as const,minWidth:0}}>
         <div style={{maxWidth:'960px',margin:'0 auto'}}>
+        {(license!==null&&!license.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
+          <div style={{fontSize:'3.5rem',marginBottom:'1rem'}}>🔒</div>
+          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{license.message}</h2>
+          <p style={{color:C.muted,fontSize:'0.875rem',marginBottom:'1.5rem'}}>
+            {license.status==='none'?'Энэ салбарт лиценз холбоогүй байна.':license.status==='blocked'?'Лиценз хаагдсан. Эзэмшигчтэй холбоо барина уу.':'Лицензийн хугацаа дууссан. Эзэмшигчтэй холбоо барина уу.'}
+          </p>
+          {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
+        </div>}
+        {(license===null||license.valid)&&<>
 
           {tab==='dashboard'&&<>
             <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
@@ -1050,11 +1042,28 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 <button key={f.k} onClick={()=>setDf(f.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${df===f.k?C.yellow:C.border}`,background:df===f.k?`${C.yellow}22`:'transparent',color:df===f.k?C.yellow:C.muted,fontWeight:df===f.k?'700':'500',cursor:'pointer',fontSize:'0.8rem'}}>{f.l}</button>
               ))}
             </div>
+            {/* CSAT / NPS тайлбар */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem',marginBottom:'1rem'}}>
+              <div style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.25)',borderRadius:'10px',padding:'0.75rem 1rem'}}>
+                <p style={{color:'#60a5fa',fontWeight:'700',fontSize:'0.75rem',margin:'0 0 0.3rem',letterSpacing:'0.04em'}}>📊 CSAT гэж юу вэ?</p>
+                <p style={{color:'rgba(255,255,255,0.6)',fontSize:'0.7rem',margin:0,lineHeight:1.5}}>Customer Satisfaction — 4-5 оноо өгсөн хэрэглэгчийн хувь. <b style={{color:'#60a5fa'}}>80%+</b> маш сайн, <b style={{color:C.yellow}}>60-79%</b> дундаж, <b style={{color:C.red}}>&lt;60%</b> сайжруулах шаардлагатай.</p>
+              </div>
+              <div style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.25)',borderRadius:'10px',padding:'0.75rem 1rem'}}>
+                <p style={{color:'#34d399',fontWeight:'700',fontSize:'0.75rem',margin:'0 0 0.3rem',letterSpacing:'0.04em'}}>📈 NPS гэж юу вэ?</p>
+                <p style={{color:'rgba(255,255,255,0.6)',fontSize:'0.7rem',margin:0,lineHeight:1.5}}>Net Promoter Score — санал болгогч (9-10) − шүүмжлэгч (0-6). <b style={{color:'#34d399'}}>+50</b> маш сайн, <b style={{color:C.yellow}}>0-49</b> дундаж, <b style={{color:C.red}}>&lt;0</b> сайжруулна.</p>
+              </div>
+            </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'0.75rem',marginBottom:'1.25rem'}}>
-              {[{l:'CSAT',v:csat!==null?`${csat}%`:'–',c:csat===null?C.muted:csat>=70?C.green:csat>=50?C.orange:C.red},{l:'NPS ОНОО',v:nps!==null?`${nps>0?'+':''}${nps}`:'–',c:nps===null?C.muted:nps>=50?C.green:nps>=0?C.orange:C.red},{l:'ЕРӨНХИЙ',v:oAvg?`${oAvg}/5`:'–',c:oAvg>=4?C.green:oAvg>=3?C.orange:oAvg>0?C.red:C.muted},{l:'ХАРИУЛТ',v:String(fsv.length),c:C.yellow}].map(s=>(
+              {[
+                {l:'CSAT',v:csat!==null?`${csat}%`:'–',c:csat===null?C.muted:csat>=80?C.green:csat>=60?C.orange:C.red,desc:csat===null?'':csat>=80?'Маш сайн 🟢':csat>=60?'Дундаж 🟡':csat>=40?'Анхаар 🟠':'Муу 🔴'},
+                {l:'NPS ОНОО',v:nps!==null?`${nps>0?'+':''}${nps}`:'–',c:nps===null?C.muted:nps>=50?C.green:nps>=0?C.orange:C.red,desc:nps===null?'':nps>=50?'Маш сайн 🟢':nps>=0?'Дундаж 🟡':'Сайжруулна 🔴'},
+                {l:'ЕРӨНХИЙ',v:oAvg?`${oAvg}/5`:'–',c:oAvg>=4?C.green:oAvg>=3?C.orange:oAvg>0?C.red:C.muted,desc:oAvg>=4?'Сайн 🟢':oAvg>=3?'Дундаж 🟡':oAvg>0?'Муу 🔴':''},
+                {l:'ХАРИУЛТ',v:String(fsv.length),c:C.yellow,desc:fsv.length>=10?'Хангалттай':fsv.length>=5?'Дундаж':'Цөөн'}
+              ].map(s=>(
                 <div key={s.l} style={{...CS,marginBottom:0}}>
                   <p style={{color:C.muted,fontSize:'0.65rem',letterSpacing:'0.06em',margin:'0 0 0.4rem',textTransform:'uppercase' as const}}>{s.l}</p>
-                  <p style={{color:s.c,fontSize:'1.8rem',fontWeight:'900',margin:0,lineHeight:1}}>{s.v}</p>
+                  <p style={{color:s.c,fontSize:'1.8rem',fontWeight:'900',margin:'0 0 0.2rem',lineHeight:1}}>{s.v}</p>
+                  {s.desc&&<p style={{color:s.c,fontSize:'0.68rem',fontWeight:'600',margin:0,opacity:0.85}}>{s.desc}</p>}
                 </div>
               ))}
             </div>
@@ -1080,6 +1089,18 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           </>}
 
           {tab==='complaints'&&<>
+            {/* Огнооны шүүлт */}
+            <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.75rem',flexWrap:'wrap' as const,alignItems:'center'}}>
+              {[{k:'7d',l:'7 хоног'},{k:'14d',l:'14 хоног'},{k:'1m',l:'1 сар'},{k:'custom',l:'Тусгай'}].map(f=>(
+                <button key={f.k} onClick={()=>setSurveyDf(f.k as any)} style={{padding:'0.38rem 0.75rem',borderRadius:'20px',border:`1px solid ${surveyDf===f.k?C.yellow:C.border}`,background:surveyDf===f.k?`${C.yellow}22`:'transparent',color:surveyDf===f.k?C.yellow:C.muted,fontWeight:surveyDf===f.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{f.l}</button>
+              ))}
+              {surveyDf==='custom'&&<>
+                <input type="date" value={surveyFrom} onChange={e=>setSurveyFrom(e.target.value)} style={{...IS,width:'140px',padding:'0.38rem 0.6rem',fontSize:'0.78rem'}}/>
+                <span style={{color:C.muted}}>—</span>
+                <input type="date" value={surveyTo} onChange={e=>setSurveyTo(e.target.value)} style={{...IS,width:'140px',padding:'0.38rem 0.6rem',fontSize:'0.78rem'}}/>
+              </>}
+              <button onClick={expSurveysXLSX} disabled={filteredSurveys.length===0} style={{marginLeft:'auto',padding:'0.38rem 0.875rem',background:`${C.green}22`,border:`1px solid ${C.green}44`,borderRadius:'8px',color:C.green,cursor:'pointer',fontSize:'0.75rem',fontWeight:'700',opacity:filteredSurveys.length===0?0.5:1}}>📊 XLSX татах</button>
+            </div>
             <div style={{display:'flex',gap:'0.5rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
               {[{id:'p',l:`🔴 Хүлээгдэж буй`,n:cpd.length,c:C.orange},{id:'r',l:`✅ Шийдвэрлэсэн`,n:crs.length,c:C.green},{id:'a',l:`💬 Аноним`,n:can.length,c:C.muted}].map(t=>(
                 <button key={t.id} onClick={()=>setCTab(t.id as any)} style={{padding:'0.5rem 1.1rem',borderRadius:'20px',border:`1px solid ${cTab===t.id?t.c:C.border}`,background:cTab===t.id?`${t.c}22`:'transparent',color:cTab===t.id?t.c:C.muted,fontWeight:cTab===t.id?'700':'500',cursor:'pointer',fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.35rem'}}>
@@ -1087,7 +1108,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 </button>
               ))}
             </div>
-            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SCard s={s} sa={cTab==='p'}/></div>)}
+            {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SurveyCard s={s} sa={cTab==='p'} branchId={branchId} onLog={(a,d)=>logAct(a,d)}/></div>)}
           </>}
 
           {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})} logAct={(a,d)=>logAct(a,d)}/>}
@@ -1105,7 +1126,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 <input value={nName} onChange={e=>setNName(e.target.value)} placeholder="Нэр" style={IS}/>
                 <CSelect value={nRole} onChange={v=>setNRole(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Ажлын Менежер'}]}/>
                 <input value={nPin} onChange={e=>setNPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN (4+)" style={IS} inputMode="numeric"/>
-                <button onClick={async()=>{if(!nName||!nPin||nPin.length<4)return;await addStaff(branchId,nName,nRole,nPin);await logAct('Ажилтан нэмлээ',`${nName} (${nRole})`);getStaff(branchId).then(setStaffList);setNName('');setNPin('');}} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
+                <button onClick={async()=>{if(!nName||!nPin||nPin.length<4)return;await addStaff(branchId,nName,nRole,nPin);await logAct('Ажилтан нэмлээ',`${nName} (${nRole})`);setNName('');setNPin('');}} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
               </div>
             </div>
             {staffList.map(s=>{
@@ -1122,8 +1143,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                     </div>
                     <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
                       <button onClick={()=>setEditStaff(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
-                      <Toggle on={active} onChange={async()=>{await updateStaff(branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);getStaff(branchId).then(setStaffList);}}/>
-                      <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(branchId,s.id);await logAct('Ажилтан устгасан',s.name);getStaff(branchId).then(setStaffList);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
+                      <Toggle on={active} onChange={async()=>{await updateStaff(branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}}/>
+                      <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(branchId,s.id);await logAct('Ажилтан устгасан',s.name);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
                     </div>
                   </div>
                 </div>
@@ -1134,11 +1155,11 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables}/>}
           {tab==='logs'&&<LogsTab logs={logs}/>}
+        </>}
         </div>
       </div>
-
       {menuModal&&<MenuModal branchId={branchId} init={menuModal} cats={cats} onClose={()=>setMenuModal(null)}/>}
-      {editStaff&&<StaffEditModal branchId={branchId} s={editStaff} onClose={()=>setEditStaff(null)} onSaved={()=>getStaff(branchId).then(setStaffList)}/>}
+      {editStaff&&<StaffEditModal branchId={branchId} s={editStaff} onClose={()=>setEditStaff(null)} onSaved={()=>{}}/>}
       {delTarget&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
         <div style={{background:C.card,borderRadius:'20px',padding:'1.5rem',maxWidth:'300px',width:'100%',textAlign:'center' as const,border:`1px solid ${C.border}`}}>
           <div style={{fontSize:'2.5rem',marginBottom:'0.75rem'}}>🗑️</div>
@@ -1184,4 +1205,4 @@ function DashSales({branchId,fromMs}:{branchId:string;fromMs:number}) {
   );
 }
 
-export default function App(){return<ErrorBoundary><AppRoot/></ErrorBoundary>;}
+export default function App(){return<ErrorBoundary><AppInner/></ErrorBoundary>;}
