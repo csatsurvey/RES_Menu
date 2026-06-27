@@ -155,9 +155,13 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
 
   // All branches (needed for license verification lookup)
   const [allBranches,setAllBranches]=useState<Branch[]>([]);
+  const [branchesLoaded,setBranchesLoaded]=useState(false);
 
   useEffect(()=>{
-    const sub=subscribeToBranches(setAllBranches);
+    const sub=subscribeToBranches((data)=>{
+      setAllBranches(data);
+      setBranchesLoaded(true);
+    });
     // Load saved staff branches
     try{const s=JSON.parse(localStorage.getItem('res_known_branches')||'[]');setSavedBranches(Array.isArray(s)?s:[]);}catch{}
     // Check if manager has a saved license key
@@ -166,14 +170,13 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     return sub;
   },[]);
 
-  // When we have a mgrLicKey, filter branches from allBranches
+  // When we have a mgrLicKey AND branches are loaded, filter branches
   useEffect(()=>{
-    if(!mgrLicKey)return;
+    if(!mgrLicKey||!branchesLoaded)return;
     const filtered=allBranches.filter(b=>(b as any).licenseKey===mgrLicKey);
     setMgrBranches(filtered);
-    // Auto-select if only one branch
     if(filtered.length===1)setMgrBranchId(filtered[0].id);
-  },[mgrLicKey,allBranches]);
+  },[mgrLicKey,allBranches,branchesLoaded]);
 
   // ── Helpers ──
   const addSavedBranch=(bId:string,bName:string)=>{
@@ -321,34 +324,53 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
         {mode==='mgr-branches'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
           <div style={{background:`${C.orange}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.orange,fontSize:'0.85rem'}}>👔 Менежер</div>
 
-          {/* Restaurant info + change button */}
-          {mgrRestaurantName&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.6rem 0.875rem',border:`1px solid ${C.border}`}}>
+          {/* Restaurant label + change button */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.6rem 0.875rem',border:`1px solid ${C.border}`}}>
             <div>
-              <p style={{color:C.muted,fontSize:'0.68rem',margin:'0 0 0.1rem',textTransform:'uppercase',letterSpacing:'0.04em'}}>Ресторан</p>
-              <p style={{color:C.yellow,fontWeight:'800',margin:0,fontSize:'0.9rem'}}>{mgrRestaurantName}</p>
+              <p style={{color:C.muted,fontSize:'0.68rem',margin:'0 0 0.1rem',textTransform:'uppercase',letterSpacing:'0.04em'}}>Ресторан / Лиценц</p>
+              <p style={{color:C.yellow,fontWeight:'800',margin:0,fontSize:'0.88rem'}}>{mgrRestaurantName||mgrLicKey}</p>
             </div>
-            <button onClick={changeMgrRestaurant} style={{background:'none',border:`1px solid ${C.border}`,color:C.muted,padding:'0.3rem 0.6rem',borderRadius:'6px',cursor:'pointer',fontSize:'0.7rem'}}>Солих</button>
+            <button onClick={changeMgrRestaurant} style={{background:'none',border:`1px solid ${C.border}`,color:C.muted,padding:'0.3rem 0.65rem',borderRadius:'6px',cursor:'pointer',fontSize:'0.7rem'}}>🔄 Солих</button>
+          </div>
+
+          {/* ① Firebase ачааллаж байна */}
+          {!branchesLoaded&&<div style={{textAlign:'center',padding:'2rem 1rem',color:C.muted}}>
+            <div style={{width:'32px',height:'32px',border:`3px solid ${C.orange}33`,borderTop:`3px solid ${C.orange}`,borderRadius:'50%',margin:'0 auto 0.75rem',animation:'spin 0.8s linear infinite'}}/>
+            <p style={{margin:0,fontSize:'0.82rem'}}>Firebase холбогдож байна...</p>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>}
 
-          {/* Branch selection — only this restaurant's branches */}
-          {mgrBranches.length===0&&<div style={{textAlign:'center',padding:'1rem',color:C.muted,fontSize:'0.8rem'}}>⏳ Салбар ачаалж байна...</div>}
-          {mgrBranches.length>0&&<>
+          {/* ② Ачааллаж дууссан ч тохирох салбар олдсонгүй */}
+          {branchesLoaded&&mgrBranches.length===0&&<div style={{background:`${C.red}11`,border:`1px solid ${C.red}33`,borderRadius:'10px',padding:'1.25rem',textAlign:'center'}}>
+            <p style={{color:C.red,fontWeight:'700',margin:'0 0 0.5rem'}}>⚠️ Тохирох салбар олдсонгүй</p>
+            <p style={{color:C.muted,fontSize:'0.78rem',margin:'0 0 1rem',lineHeight:1.5}}>
+              Хадгалагдсан лиценцийн код тохирохгүй байна.<br/>
+              Шинэ код оруулж үзнэ үү.
+            </p>
+            <button onClick={changeMgrRestaurant} style={{padding:'0.65rem 1.5rem',background:C.orange,border:'none',borderRadius:'10px',color:'white',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>
+              🔑 Лиценцийн код дахин оруулах
+            </button>
+          </div>}
+
+          {/* ③ Салбарууд олдсон */}
+          {branchesLoaded&&mgrBranches.length>0&&<>
             <label style={{...LS}}>Салбар сонгоно уу</label>
             <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
               {mgrBranches.map(b=>(
                 <button key={b.id} onClick={()=>setMgrBranchId(b.id)}
-                  style={{padding:'0.65rem 0.875rem',background:mgrBranchId===b.id?`${C.orange}22`:'rgba(255,255,255,0.04)',border:`1.5px solid ${mgrBranchId===b.id?C.orange:C.border}`,borderRadius:'10px',cursor:'pointer',textAlign:'left',color:mgrBranchId===b.id?C.orange:C.text,fontWeight:'700',fontSize:'0.875rem',transition:'all 0.15s'}}>
+                  style={{padding:'0.65rem 0.875rem',background:mgrBranchId===b.id?`${C.orange}22`:'rgba(255,255,255,0.04)',border:`1.5px solid ${mgrBranchId===b.id?C.orange:C.border}`,borderRadius:'10px',cursor:'pointer',textAlign:'left' as const,color:mgrBranchId===b.id?C.orange:C.text,fontWeight:'700',fontSize:'0.875rem',transition:'all 0.15s'}}>
                   {mgrBranchId===b.id?'✓ ':''}{b.name}
                 </button>
               ))}
             </div>
-            <input type="password" value={mgrPin} onChange={e=>{setMgrPin(e.target.value);resetErr();}} onKeyDown={e=>e.key==='Enter'&&loginManager()} placeholder="Менежерийн PIN" style={IS}/>
+            <input type="password" value={mgrPin} onChange={e=>{setMgrPin(e.target.value);resetErr();}} onKeyDown={e=>e.key==='Enter'&&loginManager()} placeholder="Менежерийн PIN" style={IS} autoFocus/>
             {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
             <button onClick={loginManager} disabled={loading||!mgrBranchId||!mgrPin}
               style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!mgrBranchId||!mgrPin)?0.6:1}}>
               {loading?'Нэвтрэж байна...':'Нэвтрэх'}
             </button>
           </>}
+
           <button onClick={()=>{setMode('select');resetErr();setMgrPin('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
 
