@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db } from '../firebase';
 import { ref, set, get, push, update, onValue, off, remove } from 'firebase/database';
 
 // ============================================================
