@@ -36,6 +36,8 @@ export interface MenuItem {
   image: string;
   available: boolean;
   allergens?: string;
+  isSpecial?: boolean;      // Онцлох/тусгай хоол
+  discountPercent?: number; // Хямдрал %
 }
 
 export interface OrderItem {
@@ -43,6 +45,7 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  discountPercent?: number; // Захиалга үед хямдрал хадгалах
 }
 
 export interface Order {
@@ -321,6 +324,13 @@ export const updateOrderStatus = async (
 ): Promise<void> => {
   await update(ref(db, `branches/${branchId}/orders/${orderId}`), {
     status,
+    updatedAt: Date.now(),
+  });
+};
+
+export const cancelOrder = async (branchId: string, orderId: string): Promise<void> => {
+  await update(ref(db, `branches/${branchId}/orders/${orderId}`), {
+    status: 'cancelled' as any,
     updatedAt: Date.now(),
   });
 };
@@ -644,7 +654,7 @@ export const getSalesReport = async (
     pm[item.name].units += item.quantity;
   }));
   const products = Object.entries(pm)
-    .map(([name, d]) => ({ name, revenue: d.revenue, qty: d.units }))
+    .map(([name, d]) => ({ name, revenue: d.revenue, qty: d.units || 0 }))
     .sort((a, b) => b.revenue - a.revenue);
 
   // By date
