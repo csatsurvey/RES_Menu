@@ -1343,6 +1343,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [nPin,setNPin]=useState('');
   const [df,setDf]=useState<'today'|'7d'|'1m'|'3m'|'1y'>('7d');
   const pending=orders.filter(o=>o.status==='pending').length;
+  const effectivePending=effectiveOrders.filter(o=>o.status==='pending').length;
   const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?'Менежер':(staff?.name||'Ажилтан'),a,d||'');
 
   // ── Multi-branch: sibling branches + global branch filter ──
@@ -1434,7 +1435,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     {id:'complaints',label:'Санал хүсэлт',icon:'📞',mo:true},
     {id:'menu',label:'Хоолны цэс удирдах',icon:'🍽️',mo:true},
     {id:'categories',label:'Ангилал удирдах',icon:'🏷️',mo:true},
-    {id:'orders',label:`Ширээний захиалгууд${effectiveOrders.filter(o=>o.status==='pending').length>0?` (${effectiveOrders.filter(o=>o.status==='pending').length})`:''}`,icon:'📋',mo:false},
+    {id:'orders',label:`Ширээний захиалгууд${effectivePending>0?` (${effectivePending})`:''}`,icon:'📋',mo:false},
     {id:'sales',label:'Борлуулалтын тайлан',icon:'💰',mo:true},
     {id:'staff',label:'Ажилтан & ПИН',icon:'👤',mo:true},
     {id:'settings',label:'Тохиргоо & QR',icon:'⚙️',mo:true},
