@@ -512,6 +512,11 @@ export const saveSettings = async (branchId: string, s: Partial<BranchSettings>)
   await update(ref(db, `branches/${branchId}/settings`), s);
 };
 
+// Use set() for arrays — update() leaves stale array index keys in Firebase when array shrinks
+export const saveSurveyQuestions = async (branchId: string, questions: string[]): Promise<void> => {
+  await set(ref(db, `branches/${branchId}/settings/surveyQuestions`), questions);
+};
+
 export const subscribeToSettings = (
   branchId: string,
   cb: (s: BranchSettings) => void
