@@ -797,7 +797,7 @@ export const checkLicenseStatus = (lic: License | null): LicenseCheck => {
   const daysLeft = Math.ceil((expiry - Date.now()) / 86400000);
   if (daysLeft <= 0) return { valid: false, status: 'expired', daysLeft: 0, message: '🔴 Лиценз дууссан', license: lic };
   if (lic.status === 'trial') return { valid: true, status: 'trial', daysLeft, message: `🟡 Туршилт — ${daysLeft} хоног үлдсэн`, license: lic };
-  return { valid: true, status: 'paid', daysLeft, message: `🟢 Идэвхтэй — ${daysLeft} хоног үлдсэн`, license: lic };
+  return { valid: true, status: 'active', daysLeft, message: `🟢 Идэвхтэй — ${daysLeft} хоног үлдсэн`, license: lic };
 };
 
 export const getBranchLicenseStatus = async (branchId: string): Promise<LicenseCheck> => {
