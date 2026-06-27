@@ -11,7 +11,7 @@ import {
   getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
   getSettings, saveSettings,
   logActivity, subscribeToLogs, ActivityLog,
-  getBranchLicenseStatus, LicenseCheck,
+  getBranchLicenseStatus, LicenseCheck, getLicense, License,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -120,54 +120,97 @@ function AppInner() {
 }
 
 function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
+  type SMode='select'|'manager'|'staff-home'|'staff-license'|'staff-saved-pin';
   const [branches,setBranches]=useState<Branch[]>([]);
-  const [mode,setMode]=useState<'select'|'manager'|'staff-pin'|'staff-branch'>('select');
+  const [mode,setMode]=useState<SMode>('select');
+  // Manager
   const [branchId,setBranchId]=useState('');
-  const [pin,setPin]=useState('');
+  const [mgrPin,setMgrPin]=useState('');
+  const [managerSearch,setManagerSearch]=useState('');
+  // Staff license code flow
+  const [licCode,setLicCode]=useState('');
+  const [licVerified,setLicVerified]=useState(false);
+  const [licBranchId,setLicBranchId]=useState('');
+  const [licBranchName,setLicBranchName]=useState('');
+  // Staff PIN (both new and saved branch)
   const [staffPin,setStaffPin]=useState('');
+  const [activeBranchId,setActiveBranchId]=useState('');
+  const [activeBranchName,setActiveBranchName]=useState('');
+  // Saved branches in localStorage
+  const [savedBranches,setSavedBranches]=useState<{branchId:string;branchName:string}[]>([]);
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-  const [matchedBranches,setMatchedBranches]=useState<{branch:Branch;staff:Staff}[]>([]);
-  const [managerSearch,setManagerSearch]=useState('');
 
   useEffect(()=>{
-    const unsub = subscribeToBranches(setBranches);
-    return unsub;
+    const sub=subscribeToBranches(setBranches);
+    try{const s=JSON.parse(localStorage.getItem('res_known_branches')||'[]');setSavedBranches(Array.isArray(s)?s:[]);}catch{}
+    return sub;
   },[]);
 
-  const filteredBranches=branches.filter(b=>
-    !managerSearch||b.name.toLowerCase().includes(managerSearch.toLowerCase())
-  );
+  const addSavedBranch=(bId:string,bName:string)=>{
+    const updated=[{branchId:bId,branchName:bName},...savedBranches.filter(b=>b.branchId!==bId)];
+    setSavedBranches(updated);
+    try{localStorage.setItem('res_known_branches',JSON.stringify(updated));}catch{}
+  };
+  const removeSavedBranch=(bId:string)=>{
+    const updated=savedBranches.filter(b=>b.branchId!==bId);
+    setSavedBranches(updated);
+    try{localStorage.setItem('res_known_branches',JSON.stringify(updated));}catch{}
+  };
+
+  const filteredBranches=branches.filter(b=>!managerSearch||b.name.toLowerCase().includes(managerSearch.toLowerCase()));
 
   const loginManager=async()=>{
-    if(!branchId||!pin)return setError('Салбар болон PIN оруулна уу');
+    if(!branchId||!mgrPin)return setError('Салбар болон PIN оруулна уу');
     setLoading(true);
-    const ok=await verifyManagerPin(branchId,pin);
+    const ok=await verifyManagerPin(branchId,mgrPin);
     setLoading(false);
     if(!ok)return setError('PIN буруу');
     onManager(branchId);
   };
 
-  // Staff: PIN-first — search ALL branches in parallel
-  const searchByPin=async()=>{
-    if(!staffPin.trim())return setError('PIN оруулна уу');
+  // Step 1: verify license code
+  const verifyLicense=async()=>{
+    const code=licCode.trim().toUpperCase();
+    if(!code)return setError('Лиценцийн код оруулна уу');
     setLoading(true);setError('');
     try{
-      const results=await Promise.all(
-        branches.map(async b=>{
-          const s=await verifyStaffPin(b.id,staffPin);
-          return s?{branch:b,staff:s}:null;
-        })
-      );
-      const matches=results.filter(Boolean) as {branch:Branch;staff:Staff}[];
-      if(matches.length===0){setError('PIN буруу эсвэл бүртгэл байхгүй');}
-      else if(matches.length===1){onStaff(matches[0].branch.id,matches[0].staff);return;}
-      else{setMatchedBranches(matches);setMode('staff-branch');}
+      const lic=await getLicense(code);
+      if(!lic){setError('Лиценцийн код олдсонгүй');setLoading(false);return;}
+      if(lic.status==='blocked'){setError('⛔ Лиценц хаагдсан байна');setLoading(false);return;}
+      const exp=lic.expiresAt||(lic as any).endDate||0;
+      if(exp&&exp<Date.now()){setError('🔴 Лицензийн хугацаа дууссан');setLoading(false);return;}
+      if(!lic.branchId){setError('Лиценцтэй салбар холбоогүй байна');setLoading(false);return;}
+      const br=branches.find(b=>b.id===lic.branchId);
+      setLicBranchId(lic.branchId);
+      setLicBranchName(br?.name||'Ресторан');
+      setLicVerified(true);
     }catch{setError('Алдаа гарлаа. Дахин оролдоно уу');}
     setLoading(false);
   };
 
-  const back=()=>{setMode('select');setError('');setPin('');setStaffPin('');setBranchId('');setManagerSearch('');setMatchedBranches([]);};
+  // Step 2: login with PIN for verified branch
+  const loginWithPin=async(bId:string,bName:string)=>{
+    if(!staffPin.trim())return setError('PIN оруулна уу');
+    setLoading(true);setError('');
+    const s=await verifyStaffPin(bId,staffPin);
+    setLoading(false);
+    if(!s)return setError('PIN буруу');
+    if((s as any).active===false)return setError('Таны эрх идэвхгүй болгосон байна');
+    addSavedBranch(bId,bName);
+    onStaff(bId,s);
+  };
+
+  const selectSaved=(bId:string,bName:string)=>{
+    setActiveBranchId(bId);setActiveBranchName(bName);setStaffPin('');setError('');setMode('staff-saved-pin');
+  };
+
+  const goStaff=()=>{
+    setError('');setLicCode('');setLicVerified(false);setStaffPin('');
+    setMode(savedBranches.length>0?'staff-home':'staff-license');
+  };
+  const backToStaff=()=>{setMode(savedBranches.length>0?'staff-home':'select');setError('');setLicCode('');setLicVerified(false);setStaffPin('');};
+  const backToMain=()=>{setMode('select');setError('');setMgrPin('');setBranchId('');setManagerSearch('');setLicCode('');setLicVerified(false);setStaffPin('');setActiveBranchId('');setActiveBranchName('');};
 
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
@@ -178,70 +221,126 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
           <p style={{color:C.muted,fontSize:'0.8rem',margin:0}}>Нэвтрэх эрхээ сонгоно уу</p>
         </div>
 
+        {/* ── MAIN SELECT ── */}
         {mode==='select'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-          <button onClick={()=>setMode('manager')} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👔 Менежер нэвтрэх</button>
-          <button onClick={()=>setMode('staff-pin')} style={{padding:'0.875rem',background:'#1a5c3a',color:C.green,border:`1px solid ${C.green}`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👨‍🍳 Тогооч / Зөөгч</button>
+          <button onClick={()=>{setError('');setMode('manager');}} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👔 Менежер нэвтрэх</button>
+          <button onClick={goStaff} style={{padding:'0.875rem',background:'#1a5c3a',color:C.green,border:`1px solid ${C.green}`,borderRadius:'14px',fontWeight:'700',fontSize:'0.95rem',cursor:'pointer'}}>👨‍🍳 Тогооч / Зөөгч</button>
         </div>}
 
+        {/* ── MANAGER LOGIN ── */}
         {mode==='manager'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
           <div style={{background:`${C.orange}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.orange,fontSize:'0.85rem'}}>👔 Менежер</div>
-          {/* Search filter for manager */}
-          <input
-            value={managerSearch}
-            onChange={e=>{setManagerSearch(e.target.value);setBranchId('');}}
-            placeholder="🔍 Салбар хайх..."
-            style={{...IS}}
-          />
-          <CSelect
-            value={branchId}
-            onChange={setBranchId}
-            placeholder={filteredBranches.length===0?'Салбар олдсонгүй':'Салбар сонгоно уу'}
-            options={filteredBranches.map(b=>({value:b.id,label:b.name}))}
-            style={{width:'100%'}}
-          />
-          <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginManager()} placeholder="Менежерийн PIN" style={IS}/>
+          <input value={managerSearch} onChange={e=>{setManagerSearch(e.target.value);setBranchId('');}} placeholder="🔍 Салбар хайх..." style={IS}/>
+          <CSelect value={branchId} onChange={setBranchId} placeholder={filteredBranches.length===0?'Олдсонгүй':'Салбар сонгоно уу'} options={filteredBranches.map(b=>({value:b.id,label:b.name}))} style={{width:'100%'}}/>
+          <input type="password" value={mgrPin} onChange={e=>{setMgrPin(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&loginManager()} placeholder="Менежерийн PIN" style={IS}/>
           {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
           <button onClick={loginManager} disabled={loading} style={{padding:'0.875rem',background:C.orange,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:loading?0.6:1}}>{loading?'Нэвтрэж байна...':'Нэвтрэх'}</button>
-          <button onClick={back} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+          <button onClick={backToMain} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
 
-        {mode==='staff-pin'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+        {/* ── STAFF HOME: saved branches list ── */}
+        {mode==='staff-home'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
           <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>👨‍🍳 Тогооч / Зөөгч</div>
-          <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.75rem',border:`1px solid ${C.border}`}}>
-            <p style={{color:C.muted,fontSize:'0.75rem',margin:0,textAlign:'center'}}>PIN оруулбал таны бүртгэлтэй салбарыг автоматаар олно</p>
+          <p style={{color:C.muted,fontSize:'0.75rem',margin:'0.25rem 0',textAlign:'center'}}>Нэвтрэх байршлаа сонгоно уу</p>
+          {savedBranches.map(sb=>(
+            <div key={sb.branchId} style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
+              <button onClick={()=>selectSaved(sb.branchId,sb.branchName)}
+                style={{flex:1,padding:'0.75rem 1rem',background:'rgba(46,204,113,0.08)',border:`1px solid ${C.green}33`,borderRadius:'12px',cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{color:C.text,fontWeight:'700',fontSize:'0.88rem'}}>{sb.branchName}</span>
+                <span style={{color:C.green}}>→</span>
+              </button>
+              <button onClick={()=>removeSavedBranch(sb.branchId)}
+                title="Энэ байршлыг устгах"
+                style={{width:'32px',height:'32px',background:`${C.red}22`,border:'none',borderRadius:'8px',color:C.red,cursor:'pointer',fontSize:'0.8rem',flexShrink:0}}>✕</button>
+            </div>
+          ))}
+          <div style={{height:'1px',background:'rgba(255,255,255,0.07)',margin:'0.25rem 0'}}/>
+          <button onClick={()=>{setMode('staff-license');setLicCode('');setLicVerified(false);setError('');}}
+            style={{padding:'0.75rem',background:'transparent',border:`1px dashed ${C.border}`,borderRadius:'12px',color:C.muted,cursor:'pointer',fontSize:'0.82rem',fontWeight:'600'}}>
+            🆕 Шинэ салбар (лиценцийн кодоор)
+          </button>
+          <button onClick={backToMain} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+        </div>}
+
+        {/* ── STAFF LICENSE CODE + PIN ── */}
+        {mode==='staff-license'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>🆕 Анхны нэвтрэлт</div>
+
+          {!licVerified&&<>
+            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.75rem',border:`1px solid ${C.border}`}}>
+              <p style={{color:C.muted,fontSize:'0.75rem',margin:0,textAlign:'center',lineHeight:1.6}}>
+                Менежерээсээ авсан <b style={{color:C.yellow}}>лиценцийн кодоо</b> оруулна уу.<br/>
+                <span style={{fontSize:'0.7rem'}}>Дараагаас нь PIN-ээрээ нэвтэрнэ.</span>
+              </p>
+            </div>
+            <input
+              value={licCode}
+              onChange={e=>{setLicCode(e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g,''));setError('');}}
+              onKeyDown={e=>e.key==='Enter'&&verifyLicense()}
+              placeholder="RES-XXXX-XXXX"
+              style={{...IS,letterSpacing:'0.1em',fontFamily:'monospace',fontSize:'1rem',textAlign:'center'}}
+              autoFocus
+            />
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+            <button onClick={verifyLicense} disabled={loading||licCode.length<8}
+              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||licCode.length<8)?0.6:1}}>
+              {loading?'Шалгаж байна...':'✅ Код шалгах'}
+            </button>
+          </>}
+
+          {licVerified&&<>
+            <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.875rem',textAlign:'center'}}>
+              <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.3rem',fontSize:'0.85rem'}}>✅ Байршил баталгаажлаа</p>
+              <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{licBranchName}</p>
+            </div>
+            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.65rem',textAlign:'center'}}>
+              <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Менежерийн өгсөн PIN кодоо оруулна уу</p>
+            </div>
+            <input
+              type="password"
+              value={staffPin}
+              onChange={e=>{setStaffPin(e.target.value);setError('');}}
+              onKeyDown={e=>e.key==='Enter'&&loginWithPin(licBranchId,licBranchName)}
+              placeholder="PIN оруулна уу"
+              style={IS}
+              autoFocus
+              inputMode="numeric"
+            />
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+            <button onClick={()=>loginWithPin(licBranchId,licBranchName)} disabled={loading||!staffPin}
+              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
+              {loading?'Нэвтрэж байна...':'Нэвтрэх'}
+            </button>
+          </>}
+
+          <button onClick={backToStaff} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+        </div>}
+
+        {/* ── STAFF SAVED BRANCH PIN ── */}
+        {mode==='staff-saved-pin'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
+          <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>👨‍🍳 PIN оруулна уу</div>
+          <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.875rem',border:`1px solid ${C.border}`,textAlign:'center'}}>
+            <p style={{color:C.muted,fontSize:'0.7rem',margin:'0 0 0.2rem'}}>Байршил</p>
+            <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{activeBranchName}</p>
           </div>
           <input
             type="password"
             value={staffPin}
             onChange={e=>{setStaffPin(e.target.value);setError('');}}
-            onKeyDown={e=>e.key==='Enter'&&searchByPin()}
+            onKeyDown={e=>e.key==='Enter'&&loginWithPin(activeBranchId,activeBranchName)}
             placeholder="PIN оруулна уу"
             style={IS}
             autoFocus
             inputMode="numeric"
           />
           {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-          <button onClick={searchByPin} disabled={loading||!staffPin} style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
-            {loading?'Хайж байна...':'🔍 Нэвтрэх'}
+          <button onClick={()=>loginWithPin(activeBranchId,activeBranchName)} disabled={loading||!staffPin}
+            style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
+            {loading?'Нэвтрэж байна...':'Нэвтрэх'}
           </button>
-          <button onClick={back} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+          <button onClick={()=>{setMode('staff-home');setError('');setStaffPin('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
 
-        {mode==='staff-branch'&&<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-          <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>👨‍🍳 Салбар сонгоно уу</div>
-          <p style={{color:C.muted,fontSize:'0.78rem',margin:0,textAlign:'center'}}>Таны PIN олдсон салбарууд:</p>
-          {matchedBranches.map(({branch,staff})=>(
-            <button key={branch.id} onClick={()=>onStaff(branch.id,staff)}
-              style={{padding:'0.875rem 1rem',background:'rgba(46,204,113,0.1)',border:`1px solid ${C.green}44`,borderRadius:'12px',cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div>
-                <p style={{color:C.text,fontWeight:'700',margin:'0 0 0.15rem',fontSize:'0.9rem'}}>{branch.name}</p>
-                <p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>{staff.role==='chef'?'👨‍🍳 Тогооч':staff.role==='admin'?'🔑 Ажлын Менежер':'🛎️ Зөөгч'} · {staff.name}</p>
-              </div>
-              <span style={{color:C.green,fontSize:'1rem'}}>→</span>
-            </button>
-          ))}
-          <button onClick={()=>{setMode('staff-pin');setMatchedBranches([]);}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← PIN дахин оруулах</button>
-        </div>}
       </div>
     </div>
   );
