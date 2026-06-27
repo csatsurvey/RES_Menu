@@ -702,7 +702,7 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   );
 }
 
-function OrderCard({o,branchId}:{o:Order;branchId:string}) {
+function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel?:string}) {
   const NEXT:Partial<Record<Order['status'],Order['status']>>={pending:'preparing',preparing:'ready',ready:'served'};
   const NL:Partial<Record<Order['status'],string>>={pending:'👨‍🍳 Бэлтгэж эхлэх',preparing:'📢 Бэлэн болгох',ready:'🛎️ Хүргэсэн тэмдэглэх'};
   const NC:Partial<Record<Order['status'],string>>={pending:'#3B82F6',preparing:'#10B981',ready:'#8B5CF6'};
@@ -710,7 +710,10 @@ function OrderCard({o,branchId}:{o:Order;branchId:string}) {
   return(
     <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
       <div style={{padding:'0.875rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:`1px solid ${C.border}`}}>
-        <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
+        <div>
+          <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
+          {branchLabel&&<div style={{fontSize:'0.65rem',color:C.orange,fontWeight:'700',marginTop:'0.1rem'}}>📍 {branchLabel}</div>}
+        </div>
         <div style={{textAlign:'right' as const}}>
           <div style={{fontSize:'0.72rem',padding:'0.25rem 0.65rem',borderRadius:'20px',fontWeight:'700',background:ORDER_STATUS_COLORS[o.status]+'22',color:ORDER_STATUS_COLORS[o.status],marginBottom:'0.2rem'}}>{ORDER_STATUS_LABELS[o.status]}</div>
           <div style={{fontSize:'0.7rem',color:el>=15?C.red:el>=5?C.yellow:C.muted,fontWeight:'600'}}>{formatTime(o.createdAt)} · {el}мин</div>
@@ -735,10 +738,9 @@ function OrderCard({o,branchId}:{o:Order;branchId:string}) {
   );
 }
 
-function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
+function OrdersKitchenView({orders,branchId,showBranchName,branchNames,currentBranchId}:{orders:Order[];branchId:string;showBranchName?:boolean;branchNames?:Record<string,string>;currentBranchId?:string}) {
   const [sf,setSf]=useState<KFilter>('all');
   const [df,setDf]=useState<'today'|'all'>('today');
-  const [showServed,setShowServed]=useState(false);
   const ts=new Date();ts.setHours(0,0,0,0);
   const todayOrders=df==='today'?orders.filter(o=>o.createdAt>=ts.getTime()):orders;
   const active=todayOrders.filter(o=>o.status!=='served').sort((a,b)=>a.createdAt-b.createdAt);
@@ -761,7 +763,7 @@ function OrdersKitchenView({orders,branchId}:{orders:Order[];branchId:string}) {
         <p style={{color:'#9CA3AF',fontSize:'0.78rem',margin:0}}>📦 Хүргэгдсэн захиалгын архив — {served.length} захиалга</p>
       </div>}
       {filtered.length===0&&<div style={{textAlign:'center',padding:'4rem 2rem',color:C.muted}}><div style={{fontSize:'3.5rem',marginBottom:'0.75rem'}}>{sf==='served'?'📦':'🎉'}</div><p style={{fontWeight:'700'}}>{sf==='served'?'Хүргэгдсэн захиалга байхгүй':'Захиалга байхгүй'}</p></div>}
-      {filtered.map(o=><div key={o.id}><OrderCard o={o} branchId={branchId}/></div>)}
+      {filtered.map(o=><div key={o.id}><OrderCard o={o} branchId={(o as any)._bid||branchId} branchLabel={showBranchName&&branchNames?(branchNames[(o as any)._bid||branchId]||''):undefined}/></div>)}
     </div>
   );
 }
@@ -1247,9 +1249,15 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const pending=orders.filter(o=>o.status==='pending').length;
   const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?'Менежер':(staff?.name||'Ажилтан'),a,d||'');
 
-  // ── Multi-branch: load sibling branches from saved licenseKey ──
+  // ── Multi-branch: sibling branches + global branch filter ──
   const [siblingBranches,setSiblingBranches]=useState<Branch[]>([]);
   const mgrLicKey=React.useMemo(()=>localStorage.getItem('res_mgr_license_key')||'',[]);
+  // Global branch filter: 'all' | branchId
+  const [gbf,setGbf]=useState<string>('all');
+  // Sibling branch data
+  const [sibOrds,setSibOrds]=useState<Record<string,Order[]>>({});
+  const [sibSrvs,setSibSrvs]=useState<Record<string,Survey[]>>({});
+  const [sibStf,setSibStf]=useState<Record<string,Staff[]>>({});
 
   useEffect(()=>{
     getBranch(branchId).then(b=>b&&setBName(b.name));
@@ -1260,7 +1268,6 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     const u5=subscribeToLogs(branchId,setLogs);
     const u6=subscribeToCategories(branchId,setCats);
     const u7=subscribeToStaff(branchId,setStaffList);
-    // Subscribe to all branches with same license key (for multi-branch view)
     let u8:()=>void=()=>{};
     if(isManager&&mgrLicKey){
       u8=subscribeToBranchesByLicenseKey(mgrLicKey,(brs)=>{
@@ -1270,10 +1277,49 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     return()=>{u1();u2();u3();u4();u5();u6();u7();u8();};
   },[branchId]);
 
+  // Subscribe to sibling branches' real-time data
+  useEffect(()=>{
+    if(!isManager||siblingBranches.length===0)return;
+    const unsubs=siblingBranches.map(b=>{
+      const u1=subscribeToOrders(b.id,o=>setSibOrds(p=>({...p,[b.id]:o})));
+      const u2=subscribeToSurveys(b.id,s=>setSibSrvs(p=>({...p,[b.id]:s})));
+      const u3=subscribeToStaff(b.id,s=>setSibStf(p=>({...p,[b.id]:s})));
+      return[u1,u2,u3];
+    });
+    return()=>unsubs.flat().forEach(u=>u());
+  },[siblingBranches.map(b=>b.id).join(',')]);
+
+  // ── Effective data based on global branch filter ──
+  const isMulti=isManager&&siblingBranches.length>0;
+  const allBranchOpts=React.useMemo(()=>[
+    {id:branchId,name:bName||'Үндсэн салбар'},
+    ...siblingBranches.map(b=>({id:b.id,name:b.name}))
+  ],[branchId,bName,siblingBranches]);
+
+  const effectiveSurveys=React.useMemo(()=>{
+    if(!isMulti||gbf===branchId)return surveys;
+    if(gbf==='all')return[...surveys,...Object.values(sibSrvs).flat()];
+    return sibSrvs[gbf]||[];
+  },[isMulti,gbf,surveys,sibSrvs,branchId]);
+
+  const effectiveOrders=React.useMemo(()=>{
+    if(!isMulti||gbf===branchId)return orders;
+    if(gbf==='all')return[...orders,...Object.values(sibOrds).flat()];
+    return sibOrds[gbf]||[];
+  },[isMulti,gbf,orders,sibOrds,branchId]);
+
+  type StaffEx=Staff&{_bn:string;_bid:string};
+  const effectiveStaff=React.useMemo(():StaffEx[]=>{
+    const cur=staffList.map(s=>({...s,_bn:bName||'',_bid:branchId}));
+    if(!isMulti||gbf===branchId)return cur;
+    if(gbf==='all')return[...cur,...Object.entries(sibStf).flatMap(([bid,stf])=>stf.map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||'',_bid:bid})))];
+    return(sibStf[gbf]||[]).map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===gbf)?.name||'',_bid:gbf}));
+  },[isMulti,gbf,staffList,sibStf,bName,branchId,allBranchOpts]);
+
   const now=Date.now();
   const fms:{[k:string]:number}={today:86400000,'7d':604800000,'1m':2592000000,'3m':7776000000,'1y':31536000000};
-  const fsv=surveys.filter(s=>(now-s.createdAt)<=fms[df]);
-  const npsArr=fsv.map(s=>s.nps);
+  const fsv=effectiveSurveys.filter(s=>(now-s.createdAt)<=fms[df]);
+  const npsArr=fsv.filter(s=>s.nps>=0).map(s=>s.nps);
   const nps=npsArr.length?Math.round(((npsArr.filter(n=>n>=9).length-npsArr.filter(n=>n<=6).length)/npsArr.length)*100):null;
   const csat=fsv.length?Math.round(fsv.filter(s=>s.csat>=4).length/fsv.length*100):null;
   const oAvg=fsv.length?+(fsv.reduce((s,x)=>s+x.csat,0)/fsv.length).toFixed(1):0;
@@ -1281,13 +1327,18 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   const hasMultiBranch=isManager&&siblingBranches.length>0;
 
+  // Active branch name label for display
+  const gbfLabel=gbf==='all'?'Бүгд':allBranchOpts.find(b=>b.id===gbf)?.name||'';
+  // Which branchId to use for actions (add/edit staff, menu etc.)
+  const activeBranchId=gbf==='all'||gbf===branchId?branchId:gbf;
+
   const NAV=[
     ...(hasMultiBranch?[{id:'multibranch',label:'Бүх салбар нэгтгэж харах',icon:'🏢',mo:true}]:[]),
     {id:'dashboard',label:'Үнэлгээний Дашбоард',icon:'📊',mo:true},
     {id:'complaints',label:'Санал хүсэлт',icon:'📞',mo:true},
     {id:'menu',label:'Хоолны цэс удирдах',icon:'🍽️',mo:true},
     {id:'categories',label:'Ангилал удирдах',icon:'🏷️',mo:true},
-    {id:'orders',label:`Ширээний захиалгууд${pending>0?` (${pending})`:''}`,icon:'📋',mo:false},
+    {id:'orders',label:`Ширээний захиалгууд${effectiveOrders.filter(o=>o.status==='pending').length>0?` (${effectiveOrders.filter(o=>o.status==='pending').length})`:''}`,icon:'📋',mo:false},
     {id:'sales',label:'Борлуулалтын тайлан',icon:'💰',mo:true},
     {id:'staff',label:'Ажилтан & ПИН',icon:'👤',mo:true},
     {id:'settings',label:'Тохиргоо & QR',icon:'⚙️',mo:true},
@@ -1299,16 +1350,16 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [surveyFrom,setSurveyFrom]=useState('');
   const [surveyTo,setSurveyTo]=useState('');
 
-  // Date-filtered surveys for complaints
+  // Date-filtered surveys for complaints (uses effectiveSurveys)
   const filteredSurveys=React.useMemo(()=>{
     if(surveyDf==='custom'&&surveyFrom&&surveyTo){
       const from=new Date(surveyFrom).getTime();
       const to=new Date(surveyTo).getTime()+86399999;
-      return surveys.filter(s=>s.createdAt>=from&&s.createdAt<=to);
+      return effectiveSurveys.filter(s=>s.createdAt>=from&&s.createdAt<=to);
     }
     const ms:Record<string,number>={'7d':604800000,'14d':1209600000,'1m':2592000000};
-    return surveys.filter(s=>(now-s.createdAt)<=(ms[surveyDf]||604800000));
-  },[surveys,surveyDf,surveyFrom,surveyTo,now]);
+    return effectiveSurveys.filter(s=>(now-s.createdAt)<=(ms[surveyDf]||604800000));
+  },[effectiveSurveys,surveyDf,surveyFrom,surveyTo,now]);
 
   const expSurveysXLSX=()=>{
     const rows=filteredSurveys.map(s=>({
@@ -1332,7 +1383,17 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     XLSX.writeFile(wb,`survey_${new Date().toLocaleDateString('mn-MN').replace(/\//g,'-')}.xlsx`);
   };
 
-  const wPhone=filteredSurveys.filter(s=>s.phone&&s.phone.trim());
+  // Complaints — enriched with branch name for multi-branch mode
+  const filtSrvEnriched=filteredSurveys.map(s=>{
+    if(!isMulti||gbf===branchId)return{...s,_bn:''};
+    if(gbf==='all'){
+      if(surveys.find(x=>x.id===s.id))return{...s,_bn:bName||''};
+      const bid=Object.entries(sibSrvs).find(([,arr])=>arr.find(x=>x.id===s.id))?.[0];
+      return{...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||''};
+    }
+    return{...s,_bn:allBranchOpts.find(b=>b.id===gbf)?.name||''};
+  });
+  const wPhone=filtSrvEnriched.filter(s=>s.phone&&s.phone.trim());
   const cpd=wPhone.filter(s=>!s.resolved),crs=wPhone.filter(s=>s.resolved),can=filteredSurveys.filter(s=>!s.phone||!s.phone.trim());
 
 
@@ -1373,6 +1434,18 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
         </div>}
         {(license===null||license.valid)&&<>
+
+          {/* ── GLOBAL BRANCH FILTER (multi-branch managers only) ── */}
+          {isMulti&&tab!=='multibranch'&&tab!=='settings'&&tab!=='logs'&&<div style={{background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:'12px',padding:'0.5rem 0.75rem',marginBottom:'0.875rem',display:'flex',gap:'0.5rem',flexWrap:'wrap' as const,alignItems:'center'}}>
+            <span style={{color:C.muted,fontSize:'0.7rem',fontWeight:'600',marginRight:'0.25rem'}}>🏢 Салбар:</span>
+            {[{id:'all',name:'Бүгд'},...allBranchOpts].map(b=>(
+              <button key={b.id} onClick={()=>setGbf(b.id)}
+                style={{padding:'0.25rem 0.7rem',borderRadius:'20px',border:`1px solid ${gbf===b.id?C.orange:C.border}`,background:gbf===b.id?`${C.orange}22`:'transparent',color:gbf===b.id?C.orange:C.muted,fontWeight:gbf===b.id?'700':'500',cursor:'pointer',fontSize:'0.73rem',whiteSpace:'nowrap' as const}}>
+                {b.name}{b.id===branchId&&b.id!=='all'?' ✓':''}
+              </button>
+            ))}
+            {gbf!=='all'&&<span style={{color:C.muted,fontSize:'0.68rem',marginLeft:'auto'}}>📍 {gbfLabel}</span>}
+          </div>}
 
           {tab==='multibranch'&&<MultiBranchTab
             currentBranchId={branchId}
@@ -1461,42 +1534,57 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
           {tab==='categories'&&<CatTab branchId={branchId} cats={cats} logAct={(a,d)=>logAct(a,d)}/>}
 
-          {tab==='orders'&&<OrdersKitchenView orders={orders} branchId={branchId}/>}
+          {tab==='orders'&&<OrdersKitchenView orders={effectiveOrders} branchId={activeBranchId} showBranchName={isMulti&&gbf==='all'} branchNames={Object.fromEntries(allBranchOpts.map(b=>[b.id,b.name]))} currentBranchId={branchId}/>}
 
-          {tab==='sales'&&<SalesTab branchId={branchId}/>}
+          {tab==='sales'&&(isMulti&&gbf==='all'
+            ?<MultiSalesView allBranchOpts={allBranchOpts} currentBranchId={branchId} sibOrds={sibOrds} currentOrders={orders}/>
+            :<SalesTab branchId={isMulti&&gbf!=='all'?gbf:branchId}/>
+          )}
 
           {tab==='staff'&&<>
-            <div style={CS}>
-              <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>➕ Шинэ ажилтан нэмэх</p>
+            {/* Add staff: only for current branch or selected specific branch */}
+            {(!isMulti||gbf!=='all')&&<div style={CS}>
+              <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>➕ Шинэ ажилтан нэмэх {isMulti&&gbf!=='all'&&<span style={{color:C.orange,fontWeight:'600',fontSize:'0.72rem'}}>({gbfLabel})</span>}</p>
               <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem'}}>
                 <input value={nName} onChange={e=>setNName(e.target.value)} placeholder="Нэр" style={IS}/>
                 <CSelect value={nRole} onChange={v=>setNRole(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Ажлын Менежер'}]}/>
                 <input value={nPin} onChange={e=>setNPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN (4+)" style={IS} inputMode="numeric"/>
-                <button onClick={async()=>{if(!nName||!nPin||nPin.length<4)return;await addStaff(branchId,nName,nRole,nPin);await logAct('Ажилтан нэмлээ',`${nName} (${nRole})`);setNName('');setNPin('');}} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
+                <button onClick={async()=>{if(!nName||!nPin||nPin.length<4)return;await addStaff(activeBranchId,nName,nRole,nPin);await logAct('Ажилтан нэмлээ',`${nName} (${nRole})`);setNName('');setNPin('');}} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
               </div>
-            </div>
-            {staffList.map(s=>{
+            </div>}
+            {isMulti&&gbf==='all'&&<div style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'10px',padding:'0.6rem 0.875rem',marginBottom:'0.875rem',fontSize:'0.78rem',color:'rgba(147,197,253,0.9)'}}>
+              ℹ️ Ажилтан нэмэх бол дээрх шүүлтрээс тухайн салбарыг сонгоно уу.
+            </div>}
+            {effectiveStaff.map(s=>{
               const active=(s as any).active!==false;
               const ri=s.role==='admin'?'🔑':s.role==='chef'?'👨‍🍳':'🛎️';
               const rl=s.role==='admin'?'Ажлын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
+              const sBid=(s as any)._bid||branchId;
+              const sBn=(s as any)._bn||'';
               return(
-                <div key={s.id} style={{...CS,opacity:active?1:0.55}}>
+                <div key={`${sBid}_${s.id}`} style={{...CS,opacity:active?1:0.55}}>
                   <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
                     <div style={{width:'42px',height:'42px',borderRadius:'50%',background:C.inpBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.3rem'}}>{ri}</div>
                     <div style={{flex:1}}>
                       <p style={{fontWeight:'700',color:active?C.text:C.muted,margin:'0 0 0.1rem'}}>{s.name}</p>
-                      <p style={{fontSize:'0.72rem',color:C.muted,margin:0}}>{rl}{!active?' · Идэвхгүй':''}</p>
+                      <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap' as const}}>
+                        <span style={{fontSize:'0.72rem',color:C.muted}}>{rl}{!active?' · Идэвхгүй':''}</span>
+                        {isMulti&&gbf==='all'&&sBn&&<span style={{fontSize:'0.62rem',background:`${C.orange}22`,color:C.orange,padding:'0.1rem 0.4rem',borderRadius:'6px',fontWeight:'600'}}>📍 {sBn}</span>}
+                      </div>
                     </div>
                     <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
-                      <button onClick={()=>setEditStaff(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
-                      <Toggle on={active} onChange={async()=>{await updateStaff(branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}}/>
-                      <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(branchId,s.id);await logAct('Ажилтан устгасан',s.name);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
+                      {sBid===branchId&&<>
+                        <button onClick={()=>setEditStaff(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
+                        <Toggle on={active} onChange={async()=>{await updateStaff(sBid,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}}/>
+                        <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(sBid,s.id);await logAct('Ажилтан устгасан',s.name);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
+                      </>}
+                      {sBid!==branchId&&<span style={{fontSize:'0.72rem',color:C.muted}}>← Тус салбарыг сонгоно уу</span>}
                     </div>
                   </div>
                 </div>
               );
             })}
-            {!staffList.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
+            {!effectiveStaff.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables}/>}
@@ -1806,6 +1894,80 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
           </div>
         ))}
       </>}
+    </div>
+  );
+}
+
+// Multi-branch combined sales view
+function MultiSalesView({allBranchOpts,currentBranchId,sibOrds,currentOrders}:{allBranchOpts:{id:string;name:string}[];currentBranchId:string;sibOrds:Record<string,Order[]>;currentOrders:Order[]}) {
+  const [filter,setFilter]=useState('today');
+  const SF2=[{k:'today',l:'Өнөөдөр',ms:86400000},{k:'7d',l:'7 хоног',ms:604800000},{k:'14d',l:'14 хоног',ms:1209600000},{k:'1m',l:'1 сар',ms:2592000000},{k:'3m',l:'3 сар',ms:7776000000}];
+  const now=Date.now();
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const getFiltered=(ords:Order[])=>{
+    const f=SF2.find(x=>x.k===filter);
+    if(filter==='today')return ords.filter(o=>o.createdAt>=todayStart.getTime());
+    return ords.filter(o=>(now-o.createdAt)<=(f?.ms||86400000));
+  };
+  const allOrders=[...getFiltered(currentOrders),...Object.values(sibOrds).flatMap(o=>getFiltered(o))];
+  const totalRevenue=allOrders.filter(o=>o.status==='served').reduce((s,o)=>s+o.totalAmount,0);
+  // By branch
+  const branchRev=allBranchOpts.map(b=>{
+    const ords=b.id===currentBranchId?getFiltered(currentOrders):getFiltered(sibOrds[b.id]||[]);
+    return{...b,revenue:ords.filter(o=>o.status==='served').reduce((s,o)=>s+o.totalAmount,0),count:ords.length};
+  }).sort((a,b)=>b.revenue-a.revenue);
+  // Top products
+  const pm:Record<string,{rev:number;qty:number}>={};
+  allOrders.filter(o=>o.status==='served').forEach(o=>o.items?.forEach(item=>{
+    if(!pm[item.name])pm[item.name]={rev:0,qty:0};
+    pm[item.name].rev+=item.price*item.quantity;pm[item.name].qty+=item.quantity;
+  }));
+  const top=Object.entries(pm).map(([name,d])=>({name,...d})).sort((a,b)=>b.rev-a.rev);
+  return(
+    <div>
+      <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap' as const,marginBottom:'1rem',alignItems:'center'}}>
+        {SF2.map(f=><button key={f.k} onClick={()=>setFilter(f.k)} style={{padding:'0.38rem 0.75rem',borderRadius:'20px',border:`1px solid ${filter===f.k?C.yellow:C.border}`,background:filter===f.k?`${C.yellow}22`:'transparent',color:filter===f.k?C.yellow:C.muted,fontWeight:filter===f.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{f.l}</button>)}
+        <span style={{marginLeft:'auto',color:C.orange,fontSize:'0.75rem',fontWeight:'700'}}>🏢 Бүх салбар нэгтгэсэн</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.6rem',marginBottom:'1rem'}}>
+        {[{l:'Нийт орлого',v:formatPrice(totalRevenue),c:C.green},{l:'Захиалга',v:String(allOrders.length),c:C.yellow},{l:'Дундаж',v:allOrders.filter(o=>o.status==='served').length?formatPrice(Math.round(totalRevenue/allOrders.filter(o=>o.status==='served').length)):'—',c:'#5eead4'}].map(s=>(
+          <div key={s.l} style={{...CS,marginBottom:0,textAlign:'center' as const}}>
+            <p style={{color:s.c,fontWeight:'800',fontSize:'1.1rem',margin:'0 0 0.2rem'}}>{s.v}</p>
+            <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>{s.l}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{...CS,marginBottom:'1rem'}}>
+        <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',textTransform:'uppercase' as const,margin:'0 0 0.75rem',letterSpacing:'0.04em'}}>📍 Салбараар</p>
+        {branchRev.map((b,i)=>{
+          const pct=totalRevenue>0?Math.round(b.revenue/totalRevenue*100):0;
+          return<div key={b.id} style={{marginBottom:'0.6rem'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.2rem'}}>
+              <span style={{color:b.id===currentBranchId?C.orange:C.text,fontSize:'0.82rem',fontWeight:'700'}}>{b.name}{b.id===currentBranchId?' ✓':''}</span>
+              <span style={{color:C.green,fontSize:'0.82rem',fontWeight:'800'}}>{formatPrice(b.revenue)} <span style={{color:C.muted,fontWeight:'400'}}>({b.count} зах, {pct}%)</span></span>
+            </div>
+            <div style={{height:'6px',background:C.inpBg,borderRadius:'3px'}}><div style={{height:'100%',width:`${pct}%`,background:['#2ECC71','#3B82F6','#F59E0B','#8B5CF6'][i%4],borderRadius:'3px'}}/></div>
+          </div>;
+        })}
+      </div>
+      {top.length>0&&<div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,overflow:'hidden'}}>
+        <div style={{padding:'0.875rem 1rem',borderBottom:`1px solid ${C.border}`}}>
+          <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',textTransform:'uppercase' as const,margin:0,letterSpacing:'0.04em'}}>🍽️ Нийт борлуулалт — бүх салбар</p>
+        </div>
+        <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:'0.82rem'}}>
+          <thead><tr style={{background:'rgba(255,255,255,0.04)'}}>
+            {['#','Бүтээгдэхүүн','Тоо','Орлого'].map(h=><th key={h} style={{padding:'0.5rem 0.875rem',textAlign:'left' as const,color:C.muted,fontSize:'0.7rem',fontWeight:'600',borderBottom:`1px solid ${C.border}`}}>{h}</th>)}
+          </tr></thead>
+          <tbody>{top.slice(0,15).map((p,i)=>(
+            <tr key={p.name} style={{borderBottom:`1px solid ${C.border}`}}>
+              <td style={{padding:'0.5rem 0.875rem',color:C.muted}}>{i+1}</td>
+              <td style={{padding:'0.5rem 0.875rem',color:'rgba(255,255,255,0.88)',fontWeight:'700'}}>{p.name}</td>
+              <td style={{padding:'0.5rem 0.875rem',color:C.yellow,fontWeight:'800'}}>{p.qty}ш</td>
+              <td style={{padding:'0.5rem 0.875rem',color:C.green,fontWeight:'800'}}>{formatPrice(p.rev)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>}
     </div>
   );
 }
