@@ -10,7 +10,7 @@ import {
   subscribeToMenu, addMenuItem, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
   subscribeToCategories, saveCategory, updateCategory, deleteCategory,
   getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
-  getSettings, saveSettings,
+  getSettings, saveSettings, saveSurveyQuestions,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License,
   getSalesReport,
@@ -103,21 +103,33 @@ function AppInner() {
   const [isManager,setIsManager]=useState(false);
   const [staff,setStaff]=useState<Staff|null>(null);
   const [license,setLicense]=useState<LicenseCheck|null>(null);
+  const [isOnline,setIsOnline]=useState(navigator.onLine);
+
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
+    const goOn=()=>setIsOnline(true);
+    const goOff=()=>setIsOnline(false);
+    window.addEventListener('online',goOn);
+    window.addEventListener('offline',goOff);
+    return()=>{window.removeEventListener('online',goOn);window.removeEventListener('offline',goOff);};
   },[]);
   const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
-  // Fetch license when entering admin view
   const goAdmin=(id:string,isMan:boolean,s:Staff|null)=>{
     if(isMan){setIsManager(true);}else{setStaff(s);}
     setBranchId(id);setView('admin');
     getBranchLicenseStatus(id).then(setLicense);
   };
-  if(view==='customer') return <CustomerView branchId={branchId} tableNum={tableNum}/>;
-  if(view==='admin') return <AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>;
-  return <LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>;
+  return(<>
+    {!isOnline&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#E74C3C',color:'white',textAlign:'center',padding:'0.4rem 1rem',fontSize:'0.78rem',fontWeight:'700',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.5rem'}}>
+      <span>📵</span>
+      <span>Интернэтгүй — офлайн горим. Захиалгууд дахин холбогдоход автоматаар синхрончлогдоно.</span>
+    </div>}
+    {view==='customer'&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
+    {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
+    {view==='landing'&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
+  </>);
 }
 
 function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
@@ -147,7 +159,9 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   const [savedBranches,setSavedBranches]=useState<{branchId:string;branchName:string}[]>([]);
   const [licCode,setLicCode]=useState('');
   const [licVerified,setLicVerified]=useState(false);
-  const [licBranchId,setLicBranchId]=useState('');
+  const [licBranches,setLicBranches]=useState<Branch[]>([]); // ALL branches under the license
+  const [licSelBid,setLicSelBid]=useState(''); // selected branch in multi-branch list
+  const [licBranchId,setLicBranchId]=useState('');  // final chosen branch (legacy compat)
   const [licBranchName,setLicBranchName]=useState('');
   const [staffPin,setStaffPin]=useState('');
   const [activeBranchId,setActiveBranchId]=useState('');
@@ -246,22 +260,49 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   };
 
   // ── Staff: verify license code ──
+  // ── Staff: verify license code — finds ALL branches under this license ──
   const verifyStaffLic=async()=>{
     const code=licCode.trim().toUpperCase();
     if(!code)return setError('Лиценцийн код оруулна уу');
+    if(!branchesLoaded){setError('Салбарын мэдээлэл ачааллаж байна, хүлээгээд дахин оролдоно уу');return;}
     setLoading(true);resetErr();
     try{
       const lic=await getLicense(code);
       if(!lic){setError('Лиценцийн код олдсонгүй');setLoading(false);return;}
-      if(lic.status==='blocked'){setError('⛔ Лиценц хаагдсан');setLoading(false);return;}
+      if(lic.status==='blocked'){setError('⛔ Лиценц хаагдсан байна');setLoading(false);return;}
       const exp=lic.expiresAt||(lic as any).endDate||0;
       if(exp&&exp<Date.now()){setError('🔴 Лицензийн хугацаа дууссан');setLoading(false);return;}
-      if(!lic.branchId){setError('Лиценцтэй салбар холбоогүй байна');setLoading(false);return;}
-      const br=allBranches.find(b=>b.id===lic.branchId);
-      setLicBranchId(lic.branchId);
-      setLicBranchName(br?.name||'Ресторан');
+
+      // Find ALL branches with this licenseKey (main + all sub-branches)
+      const foundBranches=allBranches.filter(b=>(b as any).licenseKey===code);
+
+      // Also try to find via license's branchId (fallback for older branches)
+      const mainBr=lic.branchId&&!foundBranches.find(b=>b.id===lic.branchId)
+        ?allBranches.find(b=>b.id===lic.branchId)
+        :null;
+      const allFound=mainBr?[mainBr,...foundBranches]:foundBranches;
+
+      if(allFound.length===0){
+        setError('Тухайн лиценцтэй салбар олдсонгүй. Менежерийнхээ кодыг шалгаарай.');
+        setLoading(false);return;
+      }
+
+      // Sort: main branch first (no "Салбар" keyword)
+      const sorted=[...allFound].sort((a,b)=>{
+        const aSub=/салбар|branch/i.test(a.name);
+        const bSub=/салбар|branch/i.test(b.name);
+        if(!aSub&&bSub)return -1;if(aSub&&!bSub)return 1;return a.name.localeCompare(b.name);
+      });
+      setLicBranches(sorted);
+      setLicSelBid('');
+      if(sorted.length===1){
+        // Auto-select the only branch
+        setLicSelBid(sorted[0].id);
+        setLicBranchId(sorted[0].id);
+        setLicBranchName(sorted[0].name);
+      }
       setLicVerified(true);
-    }catch{setError('Алдаа гарлаа');}
+    }catch(e){setError('Алдаа гарлаа. Дахин оролдоно уу');}
     setLoading(false);
   };
 
@@ -408,16 +449,19 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
           <button onClick={()=>{setMode('select');resetErr();}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
 
-        {/* ── STAFF: license code entry + PIN (first time) ── */}
+        {/* ── STAFF: license code entry + branch select + PIN ── */}
         {mode==='staff-lic'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
           <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>🆕 Анхны нэвтрэлт</div>
+
+          {/* Step 1: Enter license code */}
           {!licVerified&&<>
             <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.875rem',border:`1px solid ${C.border}`}}>
               <p style={{color:C.muted,fontSize:'0.75rem',margin:0,textAlign:'center',lineHeight:1.6}}>
                 Менежерийн өгсөн <b style={{color:C.yellow}}>лиценцийн кодоо</b> оруулна уу.<br/>
-                <span style={{fontSize:'0.7rem'}}>Дараагаас PIN-ээрээ нэвтэрнэ.</span>
+                <span style={{fontSize:'0.7rem'}}>Нэг удаа оруулна. Дараа нь PIN-ээрээ нэвтэрнэ.</span>
               </p>
             </div>
+            {!branchesLoaded&&<div style={{textAlign:'center',padding:'0.5rem',color:C.muted,fontSize:'0.75rem'}}>⏳ Мэдээлэл ачааллаж байна...</div>}
             <input
               value={licCode}
               onChange={e=>{setLicCode(e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g,''));resetErr();}}
@@ -427,27 +471,54 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
               autoFocus
             />
             {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-            <button onClick={verifyStaffLic} disabled={loading||licCode.length<8}
-              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||licCode.length<8)?0.6:1}}>
-              {loading?'Шалгаж байна...':'✅ Код шалгах'}
+            <button onClick={verifyStaffLic} disabled={loading||licCode.length<8||!branchesLoaded}
+              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||licCode.length<8||!branchesLoaded)?0.6:1}}>
+              {loading?'Шалгаж байна...':!branchesLoaded?'Ачааллаж байна...':'✅ Код шалгах'}
             </button>
           </>}
+
+          {/* Step 2: Select branch (if multiple) */}
           {licVerified&&<>
-            <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.875rem',textAlign:'center'}}>
-              <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.2rem',fontSize:'0.82rem'}}>✅ Баталгаажлаа</p>
-              <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{licBranchName}</p>
-            </div>
-            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.65rem',textAlign:'center'}}>
-              <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Менежерийн тавьсан PIN кодоо оруулна уу</p>
-            </div>
-            <input type="password" value={staffPin} onChange={e=>{setStaffPin(e.target.value);resetErr();}} onKeyDown={e=>e.key==='Enter'&&loginStaffWithPin(licBranchId,licBranchName)} placeholder="PIN оруулна уу" style={IS} autoFocus inputMode="numeric"/>
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-            <button onClick={()=>loginStaffWithPin(licBranchId,licBranchName)} disabled={loading||!staffPin}
-              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
-              {loading?'Нэвтрэж байна...':'Нэвтрэх'}
-            </button>
+            {licBranches.length>1&&!licSelBid&&<>
+              <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.75rem',textAlign:'center'}}>
+                <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.25rem',fontSize:'0.82rem'}}>✅ Лиценц баталгаажлаа</p>
+                <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Өөрийн ажлын салбарыг сонгоно уу</p>
+              </div>
+              {licBranches.map(b=>(
+                <button key={b.id} onClick={()=>{setLicSelBid(b.id);setLicBranchId(b.id);setLicBranchName(b.name);setStaffPin('');resetErr();}}
+                  style={{padding:'0.875rem 1rem',background:'rgba(46,204,113,0.08)',border:`1px solid ${C.green}33`,borderRadius:'12px',cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{color:C.text,fontWeight:'700',fontSize:'0.9rem'}}>{b.name}</span>
+                  <span style={{color:C.green}}>→</span>
+                </button>
+              ))}
+            </>}
+
+            {/* Step 3: PIN entry after branch selected */}
+            {licVerified&&licSelBid&&<>
+              <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.875rem',textAlign:'center'}}>
+                <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.2rem',fontSize:'0.82rem'}}>✅ Баталгаажлаа</p>
+                <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{licBranchName}</p>
+              </div>
+              {licBranches.length>1&&<button onClick={()=>{setLicSelBid('');setStaffPin('');resetErr();}} style={{background:'none',border:`1px dashed ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem',padding:'0.35rem 0.75rem'}}>← Салбар өөрчлөх</button>}
+              <input
+                type="password"
+                value={staffPin}
+                onChange={e=>{setStaffPin(e.target.value);resetErr();}}
+                onKeyDown={e=>e.key==='Enter'&&loginStaffWithPin(licBranchId,licBranchName)}
+                placeholder="PIN оруулна уу"
+                style={IS}
+                autoFocus
+                inputMode="numeric"
+              />
+              {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+              <button onClick={()=>loginStaffWithPin(licBranchId,licBranchName)} disabled={loading||!staffPin}
+                style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
+                {loading?'Нэвтрэж байна...':'Нэвтрэх'}
+              </button>
+            </>}
           </>}
-          <button onClick={()=>{savedBranches.length>0?setMode('staff-home'):setMode('select');resetErr();setLicCode('');setLicVerified(false);setStaffPin('');}}
+
+          <button onClick={()=>{savedBranches.length>0?setMode('staff-home'):setMode('select');resetErr();setLicCode('');setLicVerified(false);setLicBranches([]);setLicSelBid('');setStaffPin('');}}
             style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </div>}
 
@@ -1144,7 +1215,10 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   const lRef=useRef<HTMLInputElement>(null);
   useEffect(()=>{setTc(String(tables.length||5));},[tables.length]);
   useEffect(()=>{getSettings(branchId).then(s=>{if(s.qrTopText)setTop(s.qrTopText);if(s.qrBottomText)setBot(s.qrBottomText);if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);if((s as any).brandLogo)setLogo((s as any).brandLogo);});},[branchId]);
-  const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const saveQs=async(nq:string[])=>{
+    const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  // Survey questions use saveSurveyQuestions (set() instead of update()) to avoid Firebase array stale key bug
+  const saveQs=async(nq:string[])=>{await saveSurveyQuestions(branchId,nq);setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;const logoHtml=logo?`<img src="${logo}" style="width:60px;height:60px;object-fit:cover;border-radius:10px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto"/>`:'' ;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c">${logoHtml}<div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
   return(
     <div>
@@ -1198,18 +1272,18 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
           <div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.4rem'}}>
             <span style={{color:C.muted,fontSize:'0.72rem',width:'18px',flexShrink:0}}>{i+1}.</span>
             {eQ?.idx===i
-              ?<><input value={eQ.val} onChange={e=>setEQ({idx:i,val:e.target.value})} style={{...IS,flex:1,padding:'0.38rem 0.65rem',fontSize:'0.82rem'}} autoFocus/>
-                <button onClick={()=>{const nq=[...qs];nq[i]=eQ.val;setQs(nq);setEQ(null);}} style={{padding:'0.38rem 0.6rem',background:C.green,border:'none',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>✓</button>
+              ?<><input value={eQ.val} onChange={e=>setEQ({idx:i,val:e.target.value})} onKeyDown={async e=>{if(e.key==='Enter'){const nq=[...qs];nq[i]=eQ.val;setQs(nq);setEQ(null);await saveQs(nq);}}} style={{...IS,flex:1,padding:'0.38rem 0.65rem',fontSize:'0.82rem'}} autoFocus/>
+                <button onClick={async()=>{const nq=[...qs];nq[i]=eQ.val;setQs(nq);setEQ(null);await saveQs(nq);}} style={{padding:'0.38rem 0.6rem',background:C.green,border:'none',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.75rem',fontWeight:'700'}}>✓</button>
                 <button onClick={()=>setEQ(null)} style={{padding:'0.38rem 0.5rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.75rem'}}>✕</button></>
               :<><div style={{flex:1,padding:'0.38rem 0.65rem',background:C.inpBg,borderRadius:'8px',border:`1px solid ${C.border}`}}><span style={{color:'rgba(255,255,255,0.85)',fontSize:'0.82rem'}}>{q}</span></div>
                 <button onClick={()=>setEQ({idx:i,val:q})} style={{padding:'0.3rem 0.5rem',background:`${C.yellow}22`,border:`1px solid ${C.yellow}44`,borderRadius:'6px',color:C.yellow,cursor:'pointer',fontSize:'0.72rem'}}>✏️</button>
-                <button onClick={()=>setQs(qs.filter((_,j)=>j!==i))} style={{padding:'0.3rem 0.45rem',background:`${C.red}22`,border:'none',borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.72rem'}}>🗑</button></>}
+                <button onClick={async()=>{if(!window.confirm('Устгах уу?'))return;const nq=qs.filter((_,j)=>j!==i);setQs(nq);await saveQs(nq);}} style={{padding:'0.3rem 0.45rem',background:`${C.red}22`,border:'none',borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.72rem'}}>🗑</button></>}
           </div>
         ))}
         <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.35rem 0 0.5rem'}}>+ NPS (0-10) — тогтмол</p>
         <div style={{display:'flex',gap:'0.5rem'}}>
-          <input value={nQ} onChange={e=>setNQ(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&nQ.trim()){setQs([...qs,nQ.trim()]);setNQ('');}}} placeholder="Шинэ асуулт нэмэх..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
-          <button onClick={()=>{if(nQ.trim()){setQs([...qs,nQ.trim()]);setNQ('');}}} style={{padding:'0.5rem 0.875rem',background:C.orange,border:'none',borderRadius:'8px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem'}}>+</button>
+          <input value={nQ} onChange={e=>setNQ(e.target.value)} onKeyDown={async e=>{if(e.key==='Enter'&&nQ.trim()){const nq=[...qs,nQ.trim()];setQs(nq);setNQ('');await saveQs(nq);}}} placeholder="Шинэ асуулт нэмэх..." style={{...IS,flex:1,padding:'0.5rem 0.75rem',fontSize:'0.82rem'}}/>
+          <button onClick={async()=>{if(nQ.trim()){const nq=[...qs,nQ.trim()];setQs(nq);setNQ('');await saveQs(nq);}}} style={{padding:'0.5rem 0.875rem',background:C.orange,border:'none',borderRadius:'8px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'0.82rem'}}>+</button>
         </div>
       </div>
       <button onClick={saveAll} disabled={loading} style={{width:'100%',padding:'0.875rem',background:saved?C.green:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',transition:'background 0.2s'}}>{loading?'Хадгалж байна...':saved?'✅ Хадгалагдлаа!':'💾 Бүгдийг хадгалах'}</button>
