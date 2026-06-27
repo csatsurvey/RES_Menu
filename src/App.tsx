@@ -487,97 +487,67 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
         {mode==='staff-lic'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
           <div style={{background:`${C.green}22`,borderRadius:'10px',padding:'0.6rem',textAlign:'center',fontWeight:'700',color:C.green,fontSize:'0.85rem'}}>🆕 Анхны нэвтрэлт</div>
 
-          {/* Step 1: Enter license code */}
+          {/* STEP 1: License code */}
           {!licVerified&&<>
-            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.875rem',border:`1px solid ${C.border}`}}>
-              <p style={{color:C.muted,fontSize:'0.75rem',margin:0,textAlign:'center',lineHeight:1.6}}>
-                Менежерийн өгсөн <b style={{color:C.yellow}}>лиценцийн кодоо</b> оруулна уу.<br/>
-                <span style={{fontSize:'0.7rem'}}>Нэг удаа оруулна. Дараа нь PIN-ээрээ нэвтэрнэ.</span>
-              </p>
+            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'0.875rem',border:`1px solid ${C.border}`,textAlign:'center' as const}}>
+              <p style={{color:C.text,fontWeight:'700',margin:'0 0 0.25rem'}}>🔑 Лиценцийн код</p>
+              <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Менежерийнхээ өгсөн кодыг оруулна уу</p>
             </div>
-            {!branchesLoaded&&<div style={{textAlign:'center',padding:'0.5rem',color:C.muted,fontSize:'0.75rem'}}>⏳ Мэдээлэл ачааллаж байна...</div>}
-            <input
-              value={licCode}
-              onChange={e=>{setLicCode(e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g,''));resetErr();}}
-              onKeyDown={e=>e.key==='Enter'&&verifyStaffLic()}
-              placeholder="RES-XXXX-XXXX"
-              style={{...IS,letterSpacing:'0.1em',fontFamily:'monospace',fontSize:'1rem',textAlign:'center'}}
-              autoFocus
-            />
-            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
+            {!branchesLoaded&&<p style={{color:C.muted,fontSize:'0.75rem',textAlign:'center' as const,margin:0}}>⏳ Ачааллаж байна...</p>}
+            <input value={licCode} onChange={e=>{setLicCode(e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g,''));resetErr();}}
+              onKeyDown={e=>e.key==='Enter'&&verifyStaffLic()} placeholder="RES-XXXX-XXXX"
+              style={{...IS,letterSpacing:'0.12em',fontFamily:'monospace',fontSize:'1.1rem',textAlign:'center' as const}} autoFocus/>
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center' as const,margin:0}}>{error}</p>}
             <button onClick={verifyStaffLic} disabled={loading||licCode.length<8||!branchesLoaded}
               style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||licCode.length<8||!branchesLoaded)?0.6:1}}>
-              {loading?'Шалгаж байна...':!branchesLoaded?'Ачааллаж байна...':'✅ Код шалгах'}
+              {loading?'Шалгаж байна...':!branchesLoaded?'Ачааллаж байна...':'✅ Шалгах'}
             </button>
           </>}
 
-          {/* Step 2: Select branch (if multiple) */}
-          {licVerified&&<>
-            {licBranches.length>1&&!licSelBid&&<>
-              <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.75rem',textAlign:'center'}}>
-                <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.25rem',fontSize:'0.82rem'}}>✅ Лиценц баталгаажлаа</p>
-                <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Өөрийн ажлын салбарыг сонгоно уу</p>
-              </div>
-              {licBranches.map(b=>(
+          {/* STEP 2: Select branch - shows ALL branches */}
+          {licVerified&&!licSelBid&&<>
+            <div style={{background:`${C.green}11`,border:`1px solid ${C.green}44`,borderRadius:'12px',padding:'0.875rem',textAlign:'center' as const}}>
+              <p style={{color:C.green,fontWeight:'800',fontSize:'0.9rem',margin:'0 0 0.15rem'}}>✅ Лиценц баталгаажлаа</p>
+              <p style={{color:C.muted,fontSize:'0.75rem',margin:0}}>Ажиллаж буй салбараа сонгоно уу</p>
+            </div>
+            <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem',maxHeight:'300px',overflowY:'auto' as const}}>
+              {allBranches.length===0&&<p style={{color:C.muted,fontSize:'0.82rem',textAlign:'center' as const}}>Салбар олдсонгүй...</p>}
+              {allBranches.map(b=>(
                 <button key={b.id} onClick={()=>{setLicSelBid(b.id);setLicBranchId(b.id);setLicBranchName(b.name);setStaffPin('');resetErr();}}
-                  style={{padding:'0.875rem 1rem',background:'rgba(46,204,113,0.08)',border:`1px solid ${C.green}33`,borderRadius:'12px',cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  style={{padding:'0.875rem 1rem',background:'rgba(255,255,255,0.04)',border:`1px solid ${C.border}`,borderRadius:'12px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',textAlign:'left' as const}}>
                   <span style={{color:C.text,fontWeight:'700',fontSize:'0.9rem'}}>{b.name}</span>
-                  <span style={{color:C.green}}>→</span>
+                  <span style={{color:C.green,fontSize:'1.1rem'}}>→</span>
                 </button>
               ))}
-            </>}
-
-            {/* Step 3: PIN entry after branch selected */}
-            {licVerified&&licSelBid&&<>
-              <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'10px',padding:'0.875rem',textAlign:'center'}}>
-                <p style={{color:C.green,fontWeight:'800',margin:'0 0 0.2rem',fontSize:'0.82rem'}}>✅ Баталгаажлаа</p>
-                <p style={{color:C.text,fontWeight:'800',margin:0,fontSize:'1rem'}}>{licBranchName}</p>
-              </div>
-              {licBranches.length>1&&<button onClick={()=>{setLicSelBid('');setStaffPin('');resetErr();}} style={{background:'none',border:`1px dashed ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem',padding:'0.35rem 0.75rem'}}>← Салбар өөрчлөх</button>}
-
-              {/* Manual branch picker — shown when only 1 branch auto-selected */}
-              {!showManualBranch&&licBranches.length<=1&&<button onClick={()=>setShowManualBranch(true)}
-                style={{background:'none',border:`1px dashed ${C.yellow}55`,borderRadius:'8px',color:C.yellow,cursor:'pointer',fontSize:'0.75rem',padding:'0.35rem 0.75rem',width:'100%'}}>
-                ⚠️ Миний салбар биш — өөр салбар сонгох
-              </button>}
-
-              {showManualBranch&&<>
-                <div style={{background:`${C.yellow}11`,border:`1px solid ${C.yellow}33`,borderRadius:'10px',padding:'0.65rem 0.875rem'}}>
-                  <p style={{color:C.yellow,fontSize:'0.75rem',fontWeight:'700',margin:'0 0 0.5rem'}}>🏢 Өөрийн салбараа сонгоно уу:</p>
-                  <div style={{display:'flex',flexDirection:'column' as const,gap:'0.35rem',maxHeight:'200px',overflowY:'auto' as const}}>
-                    {allBranches.filter(b=>b.id!==licSelBid).map(b=>(
-                      <button key={b.id} onClick={()=>{setLicBranchId(b.id);setLicBranchName(b.name);setLicSelBid(b.id);setShowManualBranch(false);setStaffPin('');resetErr();}}
-                        style={{padding:'0.6rem 0.875rem',background:'rgba(255,255,255,0.04)',border:`1px solid ${C.border}`,borderRadius:'8px',cursor:'pointer',textAlign:'left' as const,color:C.text,fontWeight:'600',fontSize:'0.82rem'}}>
-                        {b.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>}
-
-              {!showManualBranch&&<>
-                <input
-                  type="password"
-                  value={staffPin}
-                  onChange={e=>{setStaffPin(e.target.value);resetErr();}}
-                  onKeyDown={e=>e.key==='Enter'&&loginStaffWithPin(licBranchId,licBranchName)}
-                  placeholder="PIN оруулна уу"
-                  style={IS}
-                  autoFocus
-                  inputMode="numeric"
-                />
-                {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center',margin:0}}>{error}</p>}
-                <button onClick={()=>loginStaffWithPin(licBranchId,licBranchName)} disabled={loading||!staffPin}
-                  style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',opacity:(loading||!staffPin)?0.6:1}}>
-                  {loading?'Нэвтрэж байна...':'Нэвтрэх'}
-                </button>
-              </>}
-            </>}
+            </div>
           </>}
 
-          <button onClick={()=>{savedBranches.length>0?setMode('staff-home'):setMode('select');resetErr();setLicCode('');setLicVerified(false);setLicBranches([]);setLicSelBid('');setStaffPin('');}}
-            style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
+          {/* STEP 3: PIN */}
+          {licVerified&&licSelBid&&<>
+            <div style={{background:`${C.green}11`,border:`1px solid ${C.green}44`,borderRadius:'12px',padding:'0.875rem',textAlign:'center' as const}}>
+              <p style={{color:C.green,fontWeight:'700',fontSize:'0.75rem',margin:'0 0 0.2rem'}}>✅ Салбар сонгогдлоо</p>
+              <p style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0}}>{licBranchName}</p>
+            </div>
+            <button onClick={()=>{setLicSelBid('');setStaffPin('');resetErr();}}
+              style={{background:'none',border:`1px dashed ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.75rem',padding:'0.4rem 0.75rem',width:'100%'}}>
+              ← Өөр салбар сонгох
+            </button>
+            <input type="password" value={staffPin}
+              onChange={e=>{setStaffPin(e.target.value.replace(/\D/g,''));resetErr();}}
+              onKeyDown={e=>e.key==='Enter'&&staffPin&&loginStaffWithPin(licBranchId,licBranchName)}
+              placeholder="PIN оруулна уу" style={{...IS,fontSize:'1.2rem',letterSpacing:'0.3em',textAlign:'center' as const}}
+              autoFocus inputMode="numeric"/>
+            {error&&<p style={{color:C.red,fontSize:'0.82rem',textAlign:'center' as const,margin:0,fontWeight:'600'}}>{error}</p>}
+            <button onClick={()=>loginStaffWithPin(licBranchId,licBranchName)} disabled={loading||!staffPin}
+              style={{padding:'0.875rem',background:C.green,color:'white',border:'none',borderRadius:'14px',fontWeight:'700',cursor:'pointer',fontSize:'1rem',opacity:(loading||!staffPin)?0.6:1}}>
+              {loading?'Нэвтрэж байна...':'Нэвтрэх'}
+            </button>
+          </>}
+
+          <button onClick={()=>{savedBranches.length>0?setMode('staff-home'):setMode('select');resetErr();setLicCode('');setLicVerified(false);setLicBranches([]);setLicSelBid('');setStaffPin('');setShowManualBranch(false);}}
+            style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem',padding:'0.25rem'}}>← Буцах</button>
         </div>}
+
 
         {/* ── STAFF: PIN for saved branch ── */}
         {mode==='staff-pin'&&<div style={{display:'flex',flexDirection:'column',gap:'0.875rem'}}>
