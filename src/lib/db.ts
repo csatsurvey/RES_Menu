@@ -108,6 +108,34 @@ export const subscribeToBranches = (
   return () => off(r, 'value', h);
 };
 
+// Filter branches by license key — returns only branches of one restaurant group
+export const subscribeToBranchesByLicenseKey = (
+  licenseKey: string,
+  callback: (branches: Branch[]) => void
+): (() => void) => {
+  const r = ref(db, 'branches');
+  const h = onValue(r, (snap) => {
+    if (!snap.exists()) { callback([]); return; }
+    callback(
+      Object.entries(snap.val())
+        .map(([id, val]: any) => ({ id, ...val }))
+        .filter((b: any) => b.licenseKey === licenseKey)
+    );
+  });
+  return () => off(r, 'value', h);
+};
+
+export const createSubBranch = async (
+  licenseKey: string,
+  name: string,
+  managerPin: string,
+  address = ''
+): Promise<string> => {
+  const r = push(ref(db, 'branches'));
+  await set(r, { name, address, managerPin, licenseKey, createdAt: Date.now() });
+  return r.key!;
+};
+
 export const getBranch = async (branchId: string): Promise<Branch | null> => {
   const snap = await get(ref(db, `branches/${branchId}`));
   if (!snap.exists()) return null;
