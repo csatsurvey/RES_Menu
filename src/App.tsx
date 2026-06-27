@@ -152,6 +152,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   // Staff — same pattern as manager
   const [staffLicInput,setStaffLicInput]=useState('');
   const [staffLicKey,setStaffLicKey]=useState('');
+  const [staffBranches,setStaffBranches]=useState<Branch[]>([]); // only THIS license's branches
   const [staffBranchId,setStaffBranchId]=useState('');
   const [staffBranchName,setStaffBranchName]=useState('');
   const [staffPin,setStaffPin]=useState('');
@@ -177,6 +178,17 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     setMgrBranches(filtered);
     if(filtered.length===1)setMgrBranchId(filtered[0].id);
   },[mgrLicKey,allBranches,branchesLoaded]);
+
+  // Staff: when returning with saved key, reload filtered branches
+  useEffect(()=>{
+    if(!staffLicKey||!branchesLoaded||staffBranches.length>0)return;
+    const byKey=allBranches.filter(b=>{
+      const k=((b as any).licenseKey||'').trim().toUpperCase();
+      return k===staffLicKey;
+    });
+    const active=byKey.filter(b=>(b as any).active!==false&&!(b as any).deletedAt);
+    if(active.length>0)setStaffBranches(active);
+  },[staffLicKey,allBranches,branchesLoaded]);
 
   // ── Manager login ──
   const goManager=()=>{resetErr();setMgrPin('');setMgrBranchId('');if(mgrLicKey)setMode('mgr-branches');else{setMgrLicInput('');setMode('mgr-lic');}};
@@ -219,6 +231,22 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
       if(lic.status==='blocked'){setError('⛔ Лиценц хаагдсан');setLoading(false);return;}
       const exp=lic.expiresAt||(lic as any).endDate||0;
       if(exp&&exp<Date.now()){setError('🔴 Лицензийн хугацаа дууссан');setLoading(false);return;}
+
+      // Зөвхөн ЭНЭХҮҮ лиценцийн салбаруудыг шүүнэ (менежертэй адил)
+      const byKey=allBranches.filter(b=>{
+        const k=((b as any).licenseKey||'').trim().toUpperCase();
+        return k===code;
+      });
+      // Үндсэн салбарыг нэмнэ (licenseKey тохируулаагүй хуучин branch-ийн үед)
+      const mainBr=lic.branchId?allBranches.find(b=>b.id===lic.branchId):null;
+      const seen=new Set<string>();
+      const merged:Branch[]=[];
+      [mainBr,...byKey].forEach(b=>{if(b&&!seen.has(b.id)){seen.add(b.id);merged.push(b);}});
+
+      // Зөвхөн идэвхтэй салбар
+      const active=merged.filter(b=>(b as any).active!==false&&!(b as any).deletedAt);
+
+      setStaffBranches(active);
       setStaffLicKey(code);
       try{localStorage.setItem(STF_LIC_LS,code);}catch{}
       setMode('staff-branches');
@@ -334,27 +362,27 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
           <button onClick={()=>{setMode('select');resetErr();}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </>}
 
-        {/* ── STAFF: Branch selection — зөвхөн идэвхтэй салбарууд ── */}
+        {/* ── STAFF: Branch selection — зөвхөн тухайн лиценцийн идэвхтэй салбарууд ── */}
         {mode==='staff-branches'&&<>
           <div style={{background:`${C.green}11`,border:`1px solid ${C.green}33`,borderRadius:'12px',padding:'0.75rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div><p style={{color:C.green,fontWeight:'800',fontSize:'0.82rem',margin:'0 0 0.1rem'}}>👨‍🍳 Тогооч / Зөөгч</p><p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>Салбараа сонгоно уу</p></div>
-            <button onClick={()=>{resetStaffLic();setMode('staff-lic');setStaffBranchId('');resetErr();}} style={{background:'none',border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.7rem',padding:'0.2rem 0.5rem'}}>Код өөрчлөх</button>
+            <button onClick={()=>{resetStaffLic();setStaffBranches([]);setMode('staff-lic');setStaffBranchId('');resetErr();}} style={{background:'none',border:`1px solid ${C.border}`,borderRadius:'6px',color:C.muted,cursor:'pointer',fontSize:'0.7rem',padding:'0.2rem 0.5rem'}}>Код өөрчлөх</button>
           </div>
-          {!branchesLoaded&&<p style={{color:C.muted,textAlign:'center' as const}}>⏳ Ачааллаж байна...</p>}
-          {branchesLoaded&&<CSelect
-            value={staffBranchId}
-            onChange={v=>{
-              const b=allBranches.find(x=>x.id===v);
-              setStaffBranchId(v);
-              setStaffBranchName(b?.name||'');
-              setStaffPin('');resetErr();
-              if(v)setMode('staff-pin');
-            }}
-            placeholder="— Салбар сонгоно уу —"
-            options={allBranches
-              .filter(b=>(b as any).active!==false&&!(b as any).deletedAt)
-              .map(b=>({value:b.id,label:b.name}))}
-          />}
+          {staffBranches.length===0
+            ?<p style={{color:C.red,textAlign:'center' as const,fontSize:'0.82rem'}}>Тухайн лиценцтэй салбар олдсонгүй</p>
+            :<CSelect
+              value={staffBranchId}
+              onChange={v=>{
+                const b=staffBranches.find(x=>x.id===v);
+                setStaffBranchId(v);
+                setStaffBranchName(b?.name||'');
+                setStaffPin('');resetErr();
+                if(v)setMode('staff-pin');
+              }}
+              placeholder="— Салбар сонгоно уу —"
+              options={staffBranches.map(b=>({value:b.id,label:b.name}))}
+            />
+          }
           <button onClick={()=>{setMode('select');resetErr();setStaffBranchId('');}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:'0.82rem'}}>← Буцах</button>
         </>}
 
