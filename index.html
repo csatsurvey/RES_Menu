@@ -10,11 +10,21 @@
     <meta name="apple-mobile-web-app-title" content="ResMenu" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.json" />
     <title>Ресторан Систем</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Хуучин service worker-уудыг бүгдийг устгана (DevTools автоматаар нээгдэхгүй болно)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => {
+            r.unregister();
+            console.log('[SW] Unregistered:', r.scope);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
