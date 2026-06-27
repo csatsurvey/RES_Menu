@@ -264,7 +264,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   const verifyStaffLic=async()=>{
     const code=licCode.trim().toUpperCase();
     if(!code)return setError('Лиценцийн код оруулна уу');
-    if(!branchesLoaded){setError('Салбарын мэдээлэл ачааллаж байна, хүлээгээд дахин оролдоно уу');return;}
+    if(!branchesLoaded){setError('Салбарын мэдээлэл ачааллаж байна...');return;}
     setLoading(true);resetErr();
     try{
       const lic=await getLicense(code);
@@ -273,30 +273,63 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
       const exp=lic.expiresAt||(lic as any).endDate||0;
       if(exp&&exp<Date.now()){setError('🔴 Лицензийн хугацаа дууссан');setLoading(false);return;}
 
-      // Find ALL branches with this licenseKey (main + all sub-branches)
-      const foundBranches=allBranches.filter(b=>(b as any).licenseKey===code);
+      // Strategy 1: exact licenseKey match (case-insensitive, trimmed)
+      const byKey=allBranches.filter(b=>{
+        const k=((b as any).licenseKey||'').trim().toUpperCase();
+        return k===code;
+      });
 
-      // Also try to find via license's branchId (fallback for older branches)
-      const mainBr=lic.branchId&&!foundBranches.find(b=>b.id===lic.branchId)
-        ?allBranches.find(b=>b.id===lic.branchId)
-        :null;
-      const allFound=mainBr?[mainBr,...foundBranches]:foundBranches;
+      // Strategy 2: find main branch via license.branchId
+      const mainBr=lic.branchId?allBranches.find(b=>b.id===lic.branchId):null;
+
+      // Strategy 3: if main branch found, find ALL branches sharing same licenseKey as main branch
+      // (handles case where sub-branch licenseKey differs slightly from entered code)
+      const mainBrLicKey=mainBr?(((mainBr as any).licenseKey||'').trim().toUpperCase()):'';
+      const byMainKey=mainBrLicKey&&mainBrLicKey!==code
+        ?allBranches.filter(b=>{
+          const k=((b as any).licenseKey||'').trim().toUpperCase();
+          return k===mainBrLicKey;
+        })
+        :[];
+
+      // Strategy 4: if main branch name known, find branches with similar name prefix
+      // handles sub-branches WITHOUT licenseKey set in Firebase at all
+      const mainName=(mainBr?.name||'').trim();
+      const byNamePrefix=mainName
+        ?allBranches.filter(b=>{
+          if(byKey.find(x=>x.id===b.id)||byMainKey.find(x=>x.id===b.id)||(mainBr&&b.id===mainBr.id))return false;
+          const bName=b.name.toUpperCase();
+          const mName=mainName.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+          return mName.length>=3&&bName.replace(/[^A-Z0-9]/g,'').includes(mName);
+        })
+        :[];
+
+      // Merge all found branches (deduplicated)
+      const seen=new Set<string>();
+      const allFound:[Branch,number][]=[];
+      [[mainBr].filter(Boolean) as Branch[],[...byKey],[...byMainKey],[...byNamePrefix]].forEach((arr,pri)=>{
+        arr.forEach(b=>{if(b&&!seen.has(b.id)){seen.add(b.id);allFound.push([b,pri]);}});
+      });
 
       if(allFound.length===0){
         setError('Тухайн лиценцтэй салбар олдсонгүй. Менежерийнхээ кодыг шалгаарай.');
         setLoading(false);return;
       }
 
-      // Sort: main branch first (no "Салбар" keyword)
-      const sorted=[...allFound].sort((a,b)=>{
-        const aSub=/салбар|branch/i.test(a.name);
-        const bSub=/салбар|branch/i.test(b.name);
-        if(!aSub&&bSub)return -1;if(aSub&&!bSub)return 1;return a.name.localeCompare(b.name);
-      });
+      // Sort: main branch first, then by name
+      const sorted=allFound
+        .sort(([a,ap],[b,bp])=>{
+          if(ap!==bp)return ap-bp;
+          const aSub=/салбар|branch/i.test(a.name);
+          const bSub=/салбар|branch/i.test(b.name);
+          if(!aSub&&bSub)return -1;if(aSub&&!bSub)return 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map(([b])=>b);
+
       setLicBranches(sorted);
       setLicSelBid('');
       if(sorted.length===1){
-        // Auto-select the only branch
         setLicSelBid(sorted[0].id);
         setLicBranchId(sorted[0].id);
         setLicBranchName(sorted[0].name);
