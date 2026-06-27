@@ -193,9 +193,13 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
 
   // ── Manager: go to login ──
   const goManager=()=>{
-    resetErr();setMgrPin('');setMgrBranchId('');
-    if(mgrLicKey){setMode('mgr-branches');}
-    else{setMgrLicInput('');setMode('mgr-lic');}
+    resetErr();setMgrPin('');setMgrBranchId(''); // Always clear PIN for security
+    if(mgrLicKey){
+      // License key saved → go to branch selection + PIN (PIN always required)
+      setMode('mgr-branches');
+    }else{
+      setMgrLicInput('');setMode('mgr-lic');
+    }
   };
 
   // ── Manager: verify license key ──
@@ -617,10 +621,18 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
               <div style={{padding:'1rem'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.3rem'}}>
                   <h3 style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0,flex:1,paddingRight:'0.75rem',lineHeight:1.3}}>{item.name}</h3>
-                  <span style={{color:C.yellow,fontWeight:'800',fontSize:'0.95rem',flexShrink:0}}>₮{item.price.toLocaleString('mn-MN')}</span>
+                  <span style={{color:C.yellow,fontWeight:'800',fontSize:'0.95rem',flexShrink:0}}>
+                    {(item as any).discountPercent>0
+                      ?<><span style={{textDecoration:'line-through',color:C.muted,fontSize:'0.78rem',marginRight:'0.25rem'}}>₮{item.price.toLocaleString('mn-MN')}</span>₮{Math.round(item.price*(1-(item as any).discountPercent/100)).toLocaleString('mn-MN')}</>
+                      :`₮${item.price.toLocaleString('mn-MN')}`}
+                  </span>
                 </div>
                 {item.description&&<p style={{color:C.muted,fontSize:'0.8rem',margin:'0 0 0.5rem',lineHeight:1.5}}>{item.description}</p>}
                 {(item as any).allergens&&<div style={{background:`${C.yellow}10`,border:`1px solid ${C.yellow}22`,borderRadius:'6px',padding:'0.3rem 0.6rem',marginBottom:'0.5rem'}}><p style={{color:`${C.yellow}99`,fontSize:'0.72rem',margin:0}}>🌿 Орц: {(item as any).allergens}</p></div>}
+                {((item as any).isSpecial||(item as any).discountPercent>0)&&<div style={{display:'flex',gap:'0.35rem',marginBottom:'0.4rem',flexWrap:'wrap' as const}}>
+                  {(item as any).isSpecial&&<span style={{fontSize:'0.65rem',background:`${C.yellow}22`,color:C.yellow,padding:'0.1rem 0.45rem',borderRadius:'6px',fontWeight:'700'}}>⭐ Онцлох</span>}
+                  {(item as any).discountPercent>0&&<span style={{fontSize:'0.65rem',background:`${C.green}22`,color:C.green,padding:'0.1rem 0.45rem',borderRadius:'6px',fontWeight:'700'}}>🏷️ -{(item as any).discountPercent}%</span>}
+                </div>}
               </div>
               {item.image&&<div onClick={()=>setLightbox(item.image)} style={{maxHeight:'200px',overflow:'hidden',cursor:'zoom-in'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'200px',objectFit:'cover',display:'block',transition:'transform 0.2s'}} onMouseOver={e=>{(e.target as HTMLImageElement).style.transform='scale(1.02)';}} onMouseOut={e=>{(e.target as HTMLImageElement).style.transform='scale(1)';}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
               <div style={{padding:'0.75rem 1rem',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:`1px solid ${C.border}`}}>
@@ -1022,7 +1034,7 @@ function MenuModal({branchId,init,cats,onClose}:{branchId:string;init:any;cats:C
   const save=async()=>{
     if(!form.name||!form.category||!form.price||isNaN(Number(form.price)))return setErr('Нэр, ангилал, үнэ шаардлагатай');
     setUpl(true);
-    try{await saveMenuItem(branchId,{name:form.name.trim(),category:form.category.trim(),price:Number(form.price),description:form.description||'',allergens:form.allergens||'',image:form.image||'',available:form.available!==false},form.id);
+    try{await saveMenuItem(branchId,{name:form.name.trim(),category:form.category.trim(),price:Number(form.price),description:form.description||'',allergens:form.allergens||'',image:form.image||'',available:form.available!==false,isSpecial:!!form.isSpecial,discountPercent:Number(form.discountPercent)||0} as any,form.id);
       await logActivity(branchId,'Менежер',form.id?'Хоол засагдлаа':'Шинэ хоол нэмэгдлэв',`${form.name} — ₮${form.price}`);
       onClose();}catch{setErr('Хадгалах алдаа');setUpl(false);}
   };
@@ -1057,6 +1069,16 @@ function MenuModal({branchId,init,cats,onClose}:{branchId:string;init:any;cats:C
           <div><label style={LS}>Үнэ (₮) *</label><input type="number" value={form.price} onChange={e=>setForm((f:any)=>({...f,price:e.target.value}))} style={IS}/></div>
           <div style={{gridColumn:'1/-1'}}><label style={LS}>Тайлбар</label><textarea value={form.description} onChange={e=>setForm((f:any)=>({...f,description:e.target.value}))} rows={2} style={{...IS,resize:'none' as const}}/></div>
           <div style={{gridColumn:'1/-1'}}><label style={LS}>Орц / Харших найрлага</label><input value={form.allergens} onChange={e=>setForm((f:any)=>({...f,allergens:e.target.value}))} placeholder="Гурил, Мах..." style={IS}/></div>
+          <div style={{gridColumn:'1/-1',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.65rem 0.875rem',background:C.inpBg,borderRadius:'10px',border:`1px solid ${C.border}`}}>
+              <Toggle on={!!form.isSpecial} onChange={v=>setForm((f:any)=>({...f,isSpecial:v}))}/>
+              <span style={{color:C.text,fontSize:'0.82rem',fontWeight:'600'}}>⭐ Онцлох хоол</span>
+            </div>
+            <div>
+              <label style={LS}>Хямдрал (%)</label>
+              <input type="number" min="0" max="100" value={form.discountPercent||''} onChange={e=>setForm((f:any)=>({...f,discountPercent:e.target.value}))} placeholder="0" style={IS}/>
+            </div>
+          </div>
           <div style={{gridColumn:'1/-1',display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem',background:C.inpBg,borderRadius:'10px',border:`1px solid ${C.border}`}}>
             <Toggle on={form.available!==false} onChange={v=>setForm((f:any)=>({...f,available:v}))}/>
             <span style={{color:C.text,fontSize:'0.875rem',fontWeight:'600'}}>Цэсэнд харагдах</span>
@@ -1123,7 +1145,7 @@ function SettingsTab({branchId,tables}:{branchId:string;tables:Table[]}) {
   useEffect(()=>{setTc(String(tables.length||5));},[tables.length]);
   useEffect(()=>{getSettings(branchId).then(s=>{if(s.qrTopText)setTop(s.qrTopText);if(s.qrBottomText)setBot(s.qrBottomText);if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);if((s as any).brandLogo)setLogo((s as any).brandLogo);});},[branchId]);
   const saveAll=async()=>{setLoading(true);await saveSettings(branchId,{qrTopText:top,qrBottomText:bot,surveyQuestions:qs,...(logo?{brandLogo:logo}:{})} as any);setLoading(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
-  const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c"><div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
+  const prtQR=(t:number)=>{const w=window.open('','_blank');if(!w)return;const logoHtml=logo?`<img src="${logo}" style="width:60px;height:60px;object-fit:cover;border-radius:10px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto"/>`:'' ;w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0;font-family:sans-serif;background:white;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{border:2px solid #f0f0f0;border-radius:16px;padding:32px 28px;max-width:280px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.08)}.t{font-size:1.6rem;font-weight:900;color:#F5C120;letter-spacing:0.08em;margin-bottom:4px}.s{font-size:.75rem;color:#888;margin-bottom:16px}.nm{font-size:.85rem;color:#555;margin:12px 0 2px}hr{border:none;border-top:1px solid #eee;margin:10px 0}.b{font-size:.78rem;color:#666;line-height:1.5}</style></head><body><div class="c">${logoHtml}<div class="t">${top}</div><div class="s">QR код скан хийж захиалгаа өгнө үү</div><img src="${buildQR(branchId,t)}" style="width:200px"/><div class="nm">Ширээ ${t}</div><hr/><div class="b">${bot}</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();};
   return(
     <div>
       <div style={CS}>
@@ -1530,7 +1552,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             {curSurveys.length===0?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>💬</div><p>Санал байхгүй</p></div>:curSurveys.map(s=><div key={s.id}><SurveyCard s={s} sa={cTab==='p'} branchId={branchId} onLog={(a,d)=>logAct(a,d)}/></div>)}
           </>}
 
-          {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||''})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:''})} logAct={(a,d)=>logAct(a,d)}/>}
+          {tab==='menu'&&<MenuTab branchId={branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||'',isSpecial:!!(item as any).isSpecial,discountPercent:String((item as any).discountPercent||'')})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:'',isSpecial:false,discountPercent:''})} logAct={(a,d)=>logAct(a,d)}/>}
 
           {tab==='categories'&&<CatTab branchId={branchId} cats={cats} logAct={(a,d)=>logAct(a,d)}/>}
 
