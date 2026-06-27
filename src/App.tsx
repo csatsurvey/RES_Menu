@@ -181,13 +181,13 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
 
   // Staff: when returning with saved key, reload filtered branches
   useEffect(()=>{
-    if(!staffLicKey||!branchesLoaded||staffBranches.length>0)return;
+    if(!staffLicKey||!branchesLoaded)return;
     const byKey=allBranches.filter(b=>{
       const k=((b as any).licenseKey||'').trim().toUpperCase();
       return k===staffLicKey;
     });
     const active=byKey.filter(b=>(b as any).active!==false&&!(b as any).deletedAt);
-    if(active.length>0)setStaffBranches(active);
+    setStaffBranches(active);
   },[staffLicKey,allBranches,branchesLoaded]);
 
   // ── Manager login ──
@@ -1253,7 +1253,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
       return[u1,u2,u3];
     });
     return()=>unsubs.flat().forEach(u=>u());
-  },[siblingBranches.map(b=>b.id).join(',')]);
+  },[siblingBranches]);
 
   // ── Effective data based on global branch filter ──
   const isMulti=isManager&&siblingBranches.length>0;
@@ -1703,7 +1703,7 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
       return[u1,u2];
     });
     return()=>unsubs.flat().forEach(u=>u());
-  },[siblingBranches.map(b=>b.id).join(',')]);
+  },[siblingBranches]);
 
   // All data combined
   const now=Date.now();
