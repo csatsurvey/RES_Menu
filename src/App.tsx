@@ -1440,7 +1440,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const effectiveStaff=React.useMemo(():StaffEx[]=>{
     const cur=staffList.map(s=>({...s,_bn:bName||'',_bid:branchId}));
     if(!isMulti||gbf===branchId)return cur;
-    if(gbf==='all')return[...cur,...Object.entries(sibStf).flatMap(([bid,stf])=>stf.map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||'',_bid:bid})))];
+    if(gbf==='all')return[...cur,...Object.entries(sibStf as Record<string,Staff[]>).flatMap(([bid,stf])=>stf.map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||'',_bid:bid})))];
     return(sibStf[gbf]||[]).map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===gbf)?.name||'',_bid:gbf}));
   },[isMulti,gbf,staffList,sibStf,bName,branchId,allBranchOpts]);
 
@@ -1517,7 +1517,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     if(!isMulti||gbf===branchId)return{...s,_bn:''};
     if(gbf==='all'){
       if(surveys.find(x=>x.id===s.id))return{...s,_bn:bName||''};
-      const bid=Object.entries(sibSrvs).find(([,arr])=>arr.find(x=>x.id===s.id))?.[0];
+      const bid=Object.entries(sibSrvs as Record<string,Survey[]>).find(([,arr])=>arr.find(x=>x.id===s.id))?.[0];
       return{...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||''};
     }
     return{...s,_bn:allBranchOpts.find(b=>b.id===gbf)?.name||''};
@@ -1945,8 +1945,10 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
         </div>}
         <div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap' as const}}>
           {displayBranches.map(b=>(
-            <BranchStatCard key={b.id} branchId={b.id} branchName={b.name} isCurrent={b.isCurrent} filterMs={fms[df]}
-              currentOrders={b.isCurrent?currentOrders:undefined} currentSurveys={b.isCurrent?currentSurveys:undefined}/>
+            <React.Fragment key={b.id}>
+              <BranchStatCard branchId={b.id} branchName={b.name} isCurrent={b.isCurrent} filterMs={fms[df]}
+                currentOrders={b.isCurrent?currentOrders:undefined} currentSurveys={b.isCurrent?currentSurveys:undefined}/>
+            </React.Fragment>
           ))}
         </div>
       </>}
