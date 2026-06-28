@@ -1041,21 +1041,21 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
         <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem',flexShrink:0}}>+ Шинэ хоол</button>
       </div>
       {disp.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>🍽️</div><p>{cf==='__inactive__'?'Идэвхгүй хоол байхгүй':'Хоол байхгүй'}</p></div>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(240px,100%),1fr))',gap:'0.75rem'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:'0.75rem',width:'100%',boxSizing:'border-box'}}>
         {disp.map(item=>(
-          <div key={item.id} style={{...CS,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6,minWidth:0,width:'100%'}}>
-            {item.image&&<div style={{height:'140px',overflow:'hidden',width:'100%'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',maxWidth:'100%'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
-            <div style={{padding:'0.875rem'}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start'}}>
-                <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,paddingRight:'0.5rem'}}>{item.name}</span>
-                <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.88rem',flexShrink:0}}>{formatPrice(item.price)}</span>
+          <div key={item.id} style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,opacity:item.available?1:0.6,width:'100%',boxSizing:'border-box'}}>
+            {item.image&&<div style={{height:'160px',overflow:'hidden',width:'100%'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
+            <div style={{padding:'0.875rem',boxSizing:'border-box'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start',gap:'0.5rem'}}>
+                <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,minWidth:0,wordBreak:'break-word'}}>{item.name}</span>
+                <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.88rem',flexShrink:0,whiteSpace:'nowrap'}}>{formatPrice(item.price)}</span>
               </div>
               <span style={{fontSize:'0.7rem',color:C.muted}}>{item.category}</span>
               {!item.available&&<span style={{fontSize:'0.65rem',color:C.red,background:`${C.red}15`,borderRadius:'4px',padding:'0.1rem 0.4rem',marginLeft:'0.4rem'}}>Идэвхгүй</span>}
               <div style={{display:'flex',gap:'0.4rem',marginTop:'0.6rem',alignItems:'center'}}>
                 <button onClick={()=>onEdit(item)} style={{flex:1,padding:'0.38rem',border:`1px solid ${C.border}`,borderRadius:'6px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.72rem'}}>✏️ Засах</button>
                 <Toggle on={item.available} onChange={()=>tog(item)}/>
-                <button onClick={()=>onDel(item.id||'')} style={{width:'32px',height:'32px',border:'none',borderRadius:'6px',background:C.red,color:'white',cursor:'pointer',fontSize:'0.95rem',display:'flex',alignItems:'center',justifyContent:'center'}}>🗑</button>
+                <button onClick={()=>onDel(item.id||'')} style={{width:'32px',height:'32px',border:'none',borderRadius:'6px',background:C.red,color:'white',cursor:'pointer',fontSize:'0.95rem',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>🗑</button>
               </div>
             </div>
           </div>
