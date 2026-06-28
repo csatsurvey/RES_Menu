@@ -13,7 +13,7 @@ import {
   getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
   getSettings, saveSettings, saveSurveyQuestions, subscribeToSettings,
   logActivity, subscribeToLogs, ActivityLog,
-  getBranchLicenseStatus, LicenseCheck, getLicense, License,
+  getBranchLicenseStatus, LicenseCheck, getLicense, License, subscribeToLicense,
   getSalesReport,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -193,7 +193,24 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   },[staffLicKey,allBranches,branchesLoaded]);
 
   // ── Manager login ──
-  const goManager=()=>{resetErr();setMgrPin('');setMgrBranchId('');if(mgrLicKey)setMode('mgr-branches');else{setMgrLicInput('');setMode('mgr-lic');}};
+  const goManager=async()=>{
+    resetErr();setMgrPin('');setMgrBranchId('');
+    if(mgrLicKey){
+      try{
+        const lic=await getLicense(mgrLicKey);
+        if(!lic||lic.status==='blocked'){
+          setMgrLicKey('');try{localStorage.removeItem(MGR_LIC_LS);}catch{}
+          setError('⛔ Лиценц хаагдсан');setMode('mgr-lic');return;
+        }
+        const exp=lic.expiresAt||(lic as any).endDate||0;
+        if(exp&&exp<Date.now()){
+          setMgrLicKey('');try{localStorage.removeItem(MGR_LIC_LS);}catch{}
+          setError('🔴 Лицензийн хугацаа дууссан');setMode('mgr-lic');return;
+        }
+      }catch{}
+      setMode('mgr-branches');
+    }else{setMgrLicInput('');setMode('mgr-lic');}
+  };
   const verifyMgr=async()=>{
     const code=mgrLicInput.trim().toUpperCase();
     if(!code)return setError('Лиценцийн код оруулна уу');
@@ -1359,7 +1376,20 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     return()=>{cancelled=true;u1();u2();u3();u4();u5();u6();u7();u8();u9();};
   },[branchId]);
 
-  // Subscribe to sibling branches' real-time data (only for main branch manager)
+  // ── Real-time лиценз шалгалт — дуусах хугацаа болоход тэр дороо хаана ──
+  const [localLicense,setLocalLicense]=useState<LicenseCheck|null>(license);
+  useEffect(()=>{setLocalLicense(license);},[license]);
+  useEffect(()=>{
+    if(!mgrLicKey||!isManager)return;
+    const u=subscribeToLicense(mgrLicKey,(check)=>{
+      setLocalLicense(check);
+    });
+    // 1 минут тутам дахин шалгана (time-based expiry)
+    const timer=setInterval(()=>{
+      getBranchLicenseStatus(branchId).then(setLocalLicense);
+    },60000);
+    return()=>{u();clearInterval(timer);};
+  },[mgrLicKey,branchId,isManager]);
   useEffect(()=>{
     if(!isManager||!isMainBranch||siblingBranches.length===0)return;
     const unsubs=siblingBranches.map(b=>{
@@ -1485,39 +1515,67 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   const curSurveys=cTab==='p'?cpd:cTab==='r'?crs:can;
 
+  const [showSidebar,setShowSidebar]=useState(false);
+  const mob=typeof window!=='undefined'&&window.innerWidth<768;
+
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex'}}>
+      {/* ── MOBILE OVERLAY ── */}
+      {mob&&showSidebar&&<div onClick={()=>setShowSidebar(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:40}}/>}
+
       {/* ── SIDEBAR ── */}
-      <div style={{width:'220px',background:C.sidebar,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column' as const,flexShrink:0,position:'sticky' as const,top:0,height:'100vh',overflowY:'auto' as const}}>
-        <div style={{padding:'1.25rem 1rem',borderBottom:`1px solid ${C.border}`}}>
-          <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.06em',margin:0}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
-          <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='admin'?'🔑 Ажлын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
+      <div style={{
+        width:'220px',background:C.sidebar,borderRight:`1px solid ${C.border}`,
+        display:'flex',flexDirection:'column' as const,flexShrink:0,
+        position:mob?'fixed' as const:'sticky' as const,
+        top:0,left:mob?(showSidebar?0:-225):0,
+        height:'100vh',overflowY:'auto' as const,
+        zIndex:mob?50:1,
+        transition:mob?'left 0.22s ease':'none',
+      }}>
+        <div style={{padding:'1.25rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.06em',margin:0}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
+            <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='admin'?'🔑 Ажлын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
+          </div>
+          {mob&&<button onClick={()=>setShowSidebar(false)} style={{background:'none',border:'none',color:C.muted,fontSize:'1.3rem',cursor:'pointer',padding:'0.2rem'}}>✕</button>}
         </div>
         <nav style={{flex:1,padding:'0.5rem 0'}}>
           {NAV.filter(n=>isManager||!n.mo).map(n=>(
-            <button key={n.id} onClick={()=>setTab(n.id as AdminTab)} style={{width:'100%',padding:'0.7rem 1rem',border:'none',background:tab===n.id?`${C.orange}22`:'transparent',color:tab===n.id?C.yellow:C.muted,fontWeight:tab===n.id?'700':'500',cursor:'pointer',textAlign:'left' as const,fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.6rem',borderLeft:tab===n.id?`3px solid ${C.orange}`:'3px solid transparent',transition:'all 0.15s'}}>
+            <button key={n.id} onClick={()=>{setTab(n.id as AdminTab);if(mob)setShowSidebar(false);}} style={{width:'100%',padding:'0.7rem 1rem',border:'none',background:tab===n.id?`${C.orange}22`:'transparent',color:tab===n.id?C.yellow:C.muted,fontWeight:tab===n.id?'700':'500',cursor:'pointer',textAlign:'left' as const,fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.6rem',borderLeft:tab===n.id?`3px solid ${C.orange}`:'3px solid transparent',transition:'all 0.15s'}}>
               <span>{n.icon}</span><span style={{flex:1}}>{n.label}</span>
             </button>
           ))}
         </nav>
-        {license!==null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.6rem 0.75rem',borderRadius:'8px',background:license.valid?(license.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${license.valid?(license.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
-          <p style={{color:license.valid?(license.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.75rem',fontWeight:'800',margin:0,lineHeight:1.3}}>{license.message||'Шалгаж байна...'}</p>
+        {localLicense!==null&&<div style={{margin:'0.5rem 1rem 0',padding:'0.6rem 0.75rem',borderRadius:'8px',background:localLicense.valid?(localLicense.status==='trial'?`${C.yellow}18`:`${C.green}18`):`${C.red}18`,border:`1px solid ${localLicense.valid?(localLicense.status==='trial'?`${C.yellow}44`:`${C.green}44`):`${C.red}44`}`}}>
+          <p style={{color:localLicense.valid?(localLicense.status==='trial'?C.yellow:C.green):C.red,fontSize:'0.75rem',fontWeight:'800',margin:0,lineHeight:1.3}}>{localLicense.message||'Шалгаж байна...'}</p>
         </div>}
         <button onClick={onLogout} style={{margin:'0.5rem 1rem 1rem',padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.8rem',fontWeight:'600',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.4rem'}}>↪ Гарах</button>
       </div>
 
       {/* ── MAIN CONTENT ── */}
-      <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto' as const,minWidth:0}}>
-        <div style={{maxWidth:'960px',margin:'0 auto'}}>
-        {(license!==null&&!license.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
-          <div style={{fontSize:'3.5rem',marginBottom:'1rem'}}>🔒</div>
-          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{license.message}</h2>
-          <p style={{color:C.muted,fontSize:'0.875rem',marginBottom:'1.5rem'}}>
-            {license.status==='none'?'Энэ салбарт лиценз холбоогүй байна.':license.status==='blocked'?'Лиценз хаагдсан. Эзэмшигчтэй холбоо барина уу.':'Лицензийн хугацаа дууссан. Эзэмшигчтэй холбоо барина уу.'}
-          </p>
-          {isManager&&<p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.75rem'}}>📞 Холбоо барих: лицензийн удирдагчтай холбогдоно уу</p>}
+      <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column' as const}}>
+        {/* Mobile top bar */}
+        {mob&&<div style={{background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.65rem 1rem',display:'flex',alignItems:'center',gap:'0.75rem',position:'sticky' as const,top:0,zIndex:10,flexShrink:0}}>
+          <button onClick={()=>setShowSidebar(true)} style={{background:'none',border:'none',color:C.yellow,fontSize:'1.5rem',cursor:'pointer',padding:0,lineHeight:1,touchAction:'manipulation' as any}}>☰</button>
+          <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.82rem',margin:0,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
+          <span style={{color:C.muted,fontSize:'0.72rem'}}>{NAV.find(n=>n.id===tab)?.label}</span>
         </div>}
-        {(license===null||license.valid)&&<>
+        <div style={{flex:1,padding:mob?'0.875rem':'1.25rem 1.5rem',overflowY:'auto' as const}}>
+        <div style={{maxWidth:'960px',margin:'0 auto'}}>
+        {(localLicense!==null&&!localLicense.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
+          <div style={{fontSize:'4rem',marginBottom:'1rem'}}>🔒</div>
+          <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{localLicense.message}</h2>
+          <p style={{color:C.muted,fontSize:'0.875rem',marginBottom:'1.5rem',lineHeight:1.6}}>
+            {localLicense.status==='none'?'Энэ салбарт лиценз холбоогүй байна.':
+             localLicense.status==='blocked'?'Лиценз хаагдсан байна. Системийн удирдагчтай холбоо барина уу.':
+             '⏰ Лицензийн хугацаа дууссан байна. Сунгуулахын тулд холбоо барина уу.'}
+          </p>
+          <button onClick={onLogout} style={{padding:'0.75rem 2rem',background:C.red,color:'white',border:'none',borderRadius:'10px',fontWeight:'700',cursor:'pointer',fontSize:'0.9rem'}}>
+            ↩ Гарах
+          </button>
+        </div>}
+        {(localLicense===null||localLicense.valid)&&<>
 
           {/* ── GLOBAL BRANCH FILTER (multi-branch managers only) ── */}
           {isMulti&&tab!=='multibranch'&&tab!=='settings'&&tab!=='logs'&&<div style={{background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:'12px',padding:'0.5rem 0.75rem',marginBottom:'0.875rem',display:'flex',gap:'0.5rem',flexWrap:'wrap' as const,alignItems:'center'}}>
@@ -1713,6 +1771,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           </div>
         </div>
       </div>}
+        </div>
     </div>
   );
 }
