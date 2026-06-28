@@ -10,7 +10,7 @@ import {
   subscribeToMenu, addMenuItem, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
   subscribeToCategories, saveCategory, updateCategory, deleteCategory,
   getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
-  getSettings, saveSettings, saveSurveyQuestions,
+  getSettings, saveSettings, saveSurveyQuestions, subscribeToSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License,
   getSalesReport,
@@ -1287,8 +1287,6 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   useEffect(()=>{
     getBranch(branchId).then(b=>b&&setBName(b.name));
-    // Load manager name from settings immediately
-    getSettings(branchId).then(s=>{if((s as any).managerName)setManagerName((s as any).managerName);});
     const u1=subscribeToSurveys(branchId,setSurveys);
     const u2=subscribeToOrders(branchId,setOrders);
     const u3=subscribeToMenu(branchId,setMenuItems);
@@ -1296,6 +1294,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     const u5=subscribeToLogs(branchId,setLogs);
     const u6=subscribeToCategories(branchId,setCats);
     const u7=subscribeToStaff(branchId,setStaffList);
+    // Real-time settings — manager name тэр дороо ачаална
+    const u9=subscribeToSettings(branchId,(s:any)=>{if(s.managerName)setManagerName(s.managerName);});
     let cancelled=false;
     let u8:()=>void=()=>{};
     if(isManager&&mgrLicKey){
@@ -1310,7 +1310,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
         }
       });
     }
-    return()=>{cancelled=true;u1();u2();u3();u4();u5();u6();u7();u8();};
+    return()=>{cancelled=true;u1();u2();u3();u4();u5();u6();u7();u8();u9();};
   },[branchId]);
 
   // Subscribe to sibling branches' real-time data (only for main branch manager)
@@ -1541,7 +1541,9 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             </div>
             <div style={CS}>
               <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>💰 Борлуулалтын товч</p>
-              <DashSales branchId={branchId} fromMs={now-fms[df]}/>
+              {isMulti&&gbf==='all'
+                ?<DashSalesInline orders={effectiveOrders} fromMs={now-fms[df]}/>
+                :<DashSales branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} fromMs={now-fms[df]}/>}
             </div>
           </>}
 
@@ -2034,9 +2036,46 @@ function MultiSalesView({allBranchOpts,currentBranchId,sibOrds,currentOrders}:{a
   );
 }
 
+function DashSalesInline({orders,fromMs}:{orders:Order[];fromMs:number}) {
+  const filtered=orders.filter(o=>o.status==='served'&&o.createdAt>=fromMs);
+  const totalRevenue=filtered.reduce((s,o)=>s+o.totalAmount,0);
+  const orderCount=filtered.length;
+  const avgOrder=orderCount?Math.round(totalRevenue/orderCount):0;
+  const pm:Record<string,{rev:number;qty:number}>={};
+  filtered.forEach(o=>o.items?.forEach(it=>{
+    if(!pm[it.name])pm[it.name]={rev:0,qty:0};
+    pm[it.name].rev+=it.price*it.quantity;pm[it.name].qty+=it.quantity;
+  }));
+  const products=Object.entries(pm).map(([name,d])=>({name,revenue:d.rev,qty:d.qty})).sort((a,b)=>b.revenue-a.revenue);
+  return(
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'0.75rem'}}>
+        {[{l:'Нийт орлого',v:formatPrice(totalRevenue),c:C.green},{l:'Захиалга',v:String(orderCount),c:C.yellow},{l:'Дундаж',v:formatPrice(avgOrder),c:'#5eead4'}].map(s=>(
+          <div key={s.l} style={{background:C.inpBg,borderRadius:'8px',padding:'0.65rem',textAlign:'center' as const}}>
+            <p style={{color:s.c,fontWeight:'800',fontSize:'1rem',margin:'0 0 0.15rem'}}>{s.v}</p>
+            <p style={{color:C.muted,fontSize:'0.65rem',margin:0}}>{s.l}</p>
+          </div>
+        ))}
+      </div>
+      {products.length>0&&<>
+        <p style={{color:C.muted,fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.4rem'}}>TOP 5 (бүх салбар)</p>
+        <div style={{display:'grid',gridTemplateColumns:'auto 1fr auto auto',gap:'0 0.5rem',fontSize:'0.78rem',alignItems:'center'}}>
+          {products.slice(0,5).map((p,i)=>[
+            <span key={`n${i}`} style={{color:C.muted,padding:'0.25rem 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>{i+1}.</span>,
+            <span key={`t${i}`} style={{color:'rgba(255,255,255,0.82)',padding:'0.25rem 0',borderBottom:'1px solid rgba(255,255,255,0.04)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{p.name}</span>,
+            <span key={`q${i}`} style={{color:C.yellow,fontWeight:'700',padding:'0.25rem 0',borderBottom:'1px solid rgba(255,255,255,0.04)',textAlign:'right' as const}}>{p.qty}ш</span>,
+            <span key={`r${i}`} style={{color:C.green,fontWeight:'700',padding:'0.25rem 0',borderBottom:'1px solid rgba(255,255,255,0.04)',textAlign:'right' as const}}>{formatPrice(p.revenue)}</span>,
+          ])}
+        </div>
+      </>}
+      {orderCount===0&&<p style={{color:C.muted,fontSize:'0.82rem',textAlign:'center' as const,padding:'0.5rem 0'}}>Борлуулалт байхгүй</p>}
+    </div>
+  );
+}
+
 function DashSales({branchId,fromMs}:{branchId:string;fromMs:number}) {
   const [data,setData]=useState<SalesData|null>(null);
-  useEffect(()=>{getSalesReport(branchId,fromMs).then(setData).catch(()=>setData(null));},[fromMs]);
+  useEffect(()=>{getSalesReport(branchId,fromMs).then(setData).catch(()=>setData(null));},[branchId,fromMs]);
   if(!data)return<p style={{color:C.muted,fontSize:'0.82rem',margin:0}}>Ачаалж байна...</p>;
   return(
     <div>
