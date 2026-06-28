@@ -445,12 +445,13 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
 
   const submit=async()=>{
     if(!can)return;
-    if(ph.length>0&&ph.length!==8){setPhErr('Утасны дугаар 8 оронтой байх ёстой');return;}
     setPhErr('');setLoading(true);
     try{
       const rated=KEYS.filter(k=>sc[k]>0);
       const csat=rated.length?Math.round(rated.reduce((s,k)=>s+sc[k],0)/rated.length):0;
-      await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||'',phone:ph||undefined});
+      // Phone: зөвхөн 8 оронтой бол хадгална, дутуу бол үл тооно
+      const phoneVal=ph.length===8?ph:undefined;
+      await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||'',phone:phoneVal});
       setOk(true);setTimeout(()=>{setLoading(false);onClose();},2000);
     }catch(e){console.error(e);setLoading(false);}
   };
@@ -505,7 +506,10 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
                 <input value={ph} onChange={e=>{setPh(e.target.value.replace(/\D/g,'').slice(0,8));setPhErr('');}}
                   placeholder="☎ Утасны дугаар (8 оронтой)" style={{...IS,borderColor:phErr?C.red:undefined,background:'rgba(255,255,255,0.06)'}} inputMode="numeric"/>
                 {phErr&&<p style={{color:C.red,fontSize:'0.75rem',margin:'0.25rem 0 0',textAlign:'center' as const}}>{phErr}</p>}
-                {(fb.length>0||ph.length===8)&&<button onClick={submit} disabled={loading}
+                {(fb.length>0||ph.length===8)&&<button onClick={async()=>{
+                    if(ph.length>0&&ph.length!==8){setPhErr('Утасны дугаар 8 оронтой байх ёстой');return;}
+                    submit();
+                  }} disabled={loading}
                   style={{width:'100%',padding:'0.75rem',background:C.yellow,color:'#000',border:'none',borderRadius:'10px',fontWeight:'800',marginTop:'0.75rem',cursor:'pointer',touchAction:'manipulation' as const}}>
                   {loading?'⏳':'✅'} Мэдээллийн хамт илгээх
                 </button>}
