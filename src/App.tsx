@@ -860,13 +860,40 @@ function SalesTab({branchId}:{branchId:string}) {
   );
 }
 
-function LogsTab({logs}:{logs:ActivityLog[]}) {
+function LogsTab({logs,sibLogs,siblingBranches,branchId,bName,isMulti}:{logs:ActivityLog[];sibLogs?:Record<string,ActivityLog[]>;siblingBranches?:Branch[];branchId?:string;bName?:string;isMulti?:boolean}) {
   const [f,setF]=useState<'today'|'7d'|'1m'>('7d');
   const [s,setS]=useState('');
+  const [logBranch,setLogBranch]=useState<string>('all');
   const now=Date.now();const ms={today:86400000,'7d':604800000,'1m':2592000000};
-  const filtered=logs.filter(l=>(now-l.createdAt)<=ms[f]&&(!s||l.action.toLowerCase().includes(s.toLowerCase())||l.staffName.toLowerCase().includes(s.toLowerCase())||l.details.toLowerCase().includes(s.toLowerCase())));
+
+  // Merge logs from all branches with branch label
+  const allLogs=React.useMemo(()=>{
+    if(!isMulti||logBranch===branchId)return logs.map(l=>({...l,_bn:''}));
+    if(logBranch==='all'){
+      const cur=logs.map(l=>({...l,_bn:bName||''}));
+      const sib=Object.entries(sibLogs||{}).flatMap(([bid,bLogs])=>{
+        const name=siblingBranches?.find(b=>b.id===bid)?.name||'';
+        return bLogs.map(l=>({...l,_bn:name}));
+      });
+      return [...cur,...sib].sort((a,b)=>b.createdAt-a.createdAt);
+    }
+    const sibBLogs=(sibLogs||{})[logBranch]||[];
+    return sibBLogs.map(l=>({...l,_bn:''}));
+  },[logBranch,logs,sibLogs,siblingBranches,bName,branchId,isMulti]);
+
+  const filtered=allLogs.filter(l=>(now-l.createdAt)<=ms[f]&&(!s||l.action.toLowerCase().includes(s.toLowerCase())||l.staffName.toLowerCase().includes(s.toLowerCase())||l.details.toLowerCase().includes(s.toLowerCase())));
   return(
     <div>
+      {/* Branch selector for logs */}
+      {isMulti&&<div style={{background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:'10px',padding:'0.5rem 0.75rem',marginBottom:'0.75rem',display:'flex',gap:'0.4rem',flexWrap:'wrap' as const,alignItems:'center'}}>
+        <span style={{color:C.muted,fontSize:'0.72rem',fontWeight:'600'}}>🏢 Салбар:</span>
+        {[{id:'all',name:'Бүгд'},...(branchId?[{id:branchId,name:bName||'Үндсэн'}]:[]),...(siblingBranches||[])].map(b=>(
+          <button key={b.id} onClick={()=>setLogBranch(b.id)}
+            style={{padding:'0.22rem 0.6rem',borderRadius:'16px',border:`1px solid ${logBranch===b.id?C.yellow:C.border}`,background:logBranch===b.id?`${C.yellow}22`:'transparent',color:logBranch===b.id?C.yellow:C.muted,fontSize:'0.72rem',fontWeight:logBranch===b.id?'700':'400',cursor:'pointer'}}>
+            {b.name}
+          </button>
+        ))}
+      </div>}
       <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.875rem',flexWrap:'wrap' as const,alignItems:'center'}}>
         {[{k:'today',l:'Өнөөдөр'},{k:'7d',l:'7 хоног'},{k:'1m',l:'1 сар'}].map(t=><button key={t.k} onClick={()=>setF(t.k as any)} style={{padding:'0.38rem 0.75rem',borderRadius:'20px',border:`1px solid ${f===t.k?C.yellow:C.border}`,background:f===t.k?`${C.yellow}22`:'transparent',color:f===t.k?C.yellow:C.muted,fontWeight:f===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>{t.l}</button>)}
         <input value={s} onChange={e=>setS(e.target.value)} placeholder="🔍 Хайх..." style={{...IS,flex:1,minWidth:'160px',padding:'0.38rem 0.75rem',fontSize:'0.78rem'}}/>
@@ -874,10 +901,11 @@ function LogsTab({logs}:{logs:ActivityLog[]}) {
       </div>
       {filtered.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>📜</div><p>Лог байхгүй</p></div>}
       {filtered.map(l=>(
-        <div key={l.id} style={{...CS,display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'1rem',padding:'0.75rem 1rem'}}>
+        <div key={`${(l as any)._bn||''}${l.id}`} style={{...CS,display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'1rem',padding:'0.75rem 1rem'}}>
           <div style={{flex:1,minWidth:0}}>
             <p style={{color:'rgba(255,255,255,0.88)',fontWeight:'700',margin:'0 0 0.12rem',fontSize:'0.875rem'}}>{l.action}</p>
             {l.details&&<p style={{color:C.muted,margin:0,fontSize:'0.75rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{l.details}</p>}
+            {(l as any)._bn&&<span style={{fontSize:'0.65rem',background:`${C.orange}22`,color:C.orange,padding:'0.08rem 0.4rem',borderRadius:'5px',marginTop:'0.2rem',display:'inline-block'}}>📍{(l as any)._bn}</span>}
           </div>
           <div style={{textAlign:'right' as const,flexShrink:0}}>
             <p style={{color:C.yellow,fontSize:'0.75rem',fontWeight:'700',margin:'0 0 0.1rem'}}>{l.staffName}</p>
@@ -1234,6 +1262,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [df,setDf]=useState<'today'|'7d'|'1m'|'3m'|'1y'>('7d');
   const pending=orders.filter(o=>o.status==='pending').length;
   const [managerName,setManagerName]=useState('');
+  const [isMainBranch,setIsMainBranch]=useState(false); // only main branch gets multi-branch features
   const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?(managerName||'Менежер'):(staff?.name||'Ажилтан'),a,d||'');
 
   // ── Multi-branch: sibling branches + global branch filter ──
@@ -1245,9 +1274,12 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [sibOrds,setSibOrds]=useState<Record<string,Order[]>>({});
   const [sibSrvs,setSibSrvs]=useState<Record<string,Survey[]>>({});
   const [sibStf,setSibStf]=useState<Record<string,Staff[]>>({});
+  const [sibLogs,setSibLogs]=useState<Record<string,ActivityLog[]>>({});
 
   useEffect(()=>{
     getBranch(branchId).then(b=>b&&setBName(b.name));
+    // Load manager name from settings immediately
+    getSettings(branchId).then(s=>{if((s as any).managerName)setManagerName((s as any).managerName);});
     const u1=subscribeToSurveys(branchId,setSurveys);
     const u2=subscribeToOrders(branchId,setOrders);
     const u3=subscribeToMenu(branchId,setMenuItems);
@@ -1257,27 +1289,35 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     const u7=subscribeToStaff(branchId,setStaffList);
     let u8:()=>void=()=>{};
     if(isManager&&mgrLicKey){
-      u8=subscribeToBranchesByLicenseKey(mgrLicKey,(brs)=>{
-        setSiblingBranches(brs.filter(b=>b.id!==branchId));
+      // Check if this is the main branch by comparing with license record
+      getLicense(mgrLicKey).then(lic=>{
+        const isMain=!lic?.branchId||lic.branchId===branchId;
+        setIsMainBranch(isMain);
+        if(isMain){
+          u8=subscribeToBranchesByLicenseKey(mgrLicKey,(brs)=>{
+            setSiblingBranches(brs.filter(b=>b.id!==branchId));
+          });
+        }
       });
     }
     return()=>{u1();u2();u3();u4();u5();u6();u7();u8();};
   },[branchId]);
 
-  // Subscribe to sibling branches' real-time data
+  // Subscribe to sibling branches' real-time data (only for main branch manager)
   useEffect(()=>{
-    if(!isManager||siblingBranches.length===0)return;
+    if(!isManager||!isMainBranch||siblingBranches.length===0)return;
     const unsubs=siblingBranches.map(b=>{
       const u1=subscribeToOrders(b.id,o=>setSibOrds(p=>({...p,[b.id]:o})));
       const u2=subscribeToSurveys(b.id,s=>setSibSrvs(p=>({...p,[b.id]:s})));
       const u3=subscribeToStaff(b.id,s=>setSibStf(p=>({...p,[b.id]:s})));
-      return[u1,u2,u3];
+      const u4=subscribeToLogs(b.id,l=>setSibLogs(p=>({...p,[b.id]:l})));
+      return[u1,u2,u3,u4];
     });
     return()=>unsubs.flat().forEach(u=>u());
-  },[siblingBranches]);
+  },[siblingBranches,isMainBranch]);
 
-  // ── Effective data based on global branch filter ──
-  const isMulti=isManager&&siblingBranches.length>0;
+  // ── Effective data — isMulti зөвхөн үндсэн салбарын менежерт ──
+  const isMulti=isManager&&isMainBranch&&siblingBranches.length>0;
   const allBranchOpts=React.useMemo(()=>[
     {id:branchId,name:bName||'Үндсэн салбар'},
     ...siblingBranches.map(b=>({id:b.id,name:b.name}))
@@ -1598,7 +1638,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName}/>}
-          {tab==='logs'&&<LogsTab logs={logs}/>}
+          {tab==='logs'&&<LogsTab logs={logs} sibLogs={sibLogs} siblingBranches={siblingBranches} branchId={branchId} bName={bName} isMulti={isMulti}/>}
         </>}
         </div>
       </div>
