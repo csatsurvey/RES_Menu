@@ -425,17 +425,22 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
   const [ok,setOk]=useState(false);
   const [qs,setQs]=useState(DEF_Q);
   useEffect(()=>{getSettings(branchId).then(s=>{if((s as any).surveyQuestions?.length)setQs((s as any).surveyQuestions);});},[branchId]);
+  const [err,setErr]=useState('');
   const can=KEYS.some(k=>sc[k]>0);
   const submit=async()=>{
     if(!can||loading)return;
-    setLoading(true);
+    setErr('');setLoading(true);
     try{
       const rated=KEYS.filter(k=>sc[k]>0);
       const csat=rated.length?Math.round(rated.reduce((s,k)=>s+sc[k],0)/rated.length):0;
       await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||'',phone:ph.length===8?ph:undefined});
       setOk(true);
       setTimeout(()=>onBack(),2000);
-    }catch(e){console.error(e);setLoading(false);}
+    }catch(e:any){
+      console.error(e);
+      setErr('Алдаа: '+(e?.message||String(e)||'Firebase холбогдохгүй байна'));
+      setLoading(false);
+    }
   };
   if(ok)return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',gap:'1rem'}}>
@@ -472,8 +477,12 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
             ))}
           </div>
         </div>
-        <button onClick={submit} disabled={!can||loading}
-          style={{width:'100%',padding:'1.1rem',borderRadius:'14px',border:'none',background:can?C.green:'#2a2a35',color:can?'white':'rgba(255,255,255,0.3)',fontWeight:'900',fontSize:'1.1rem',cursor:can?'pointer':'default',boxShadow:can?'0 4px 20px rgba(46,204,113,0.4)':'none',marginBottom:'1rem',letterSpacing:'0.04em'}}>
+        {err&&<div style={{background:'#1a0808',border:'1px solid #E74C3C',borderRadius:'10px',padding:'0.75rem',marginBottom:'0.75rem',color:'#ff9a9a',fontSize:'0.82rem'}}>⚠️ {err}</div>}
+        <button
+          onClick={submit}
+          onTouchEnd={e=>{e.preventDefault();submit();}}
+          disabled={!can||loading}
+          style={{width:'100%',padding:'1.1rem',borderRadius:'14px',border:'none',background:can?C.green:'#2a2a35',color:can?'white':'rgba(255,255,255,0.3)',fontWeight:'900',fontSize:'1.1rem',cursor:can?'pointer':'default',boxShadow:can?'0 4px 20px rgba(46,204,113,0.4)':'none',marginBottom:'1rem',letterSpacing:'0.04em',WebkitTapHighlightColor:'transparent' as any,touchAction:'manipulation' as any}}>
           {loading?'⏳ Илгээж байна...':can?'✅  ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
         </button>
         <div style={{background:'rgba(255,255,255,0.03)',borderRadius:'12px',padding:'1rem',marginBottom:'2rem',border:`1px dashed rgba(255,255,255,0.1)`}}>
