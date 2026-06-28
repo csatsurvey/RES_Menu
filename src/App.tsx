@@ -1271,8 +1271,9 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [df,setDf]=useState<'today'|'7d'|'1m'|'3m'|'1y'>('7d');
   const pending=orders.filter(o=>o.status==='pending').length;
   const [managerName,setManagerName]=useState('');
-  const [isMainBranch,setIsMainBranch]=useState(false); // only main branch gets multi-branch features
-  const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?(managerName||'Менежер'):(staff?.name||'Ажилтан'),a,d||'');
+  const managerNameRef=useRef('');
+  const [isMainBranch,setIsMainBranch]=useState(false);
+  const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?(managerNameRef.current||'Менежер'):(staff?.name||'Ажилтан'),a,d||'');
 
   // ── Multi-branch: sibling branches + global branch filter ──
   const [siblingBranches,setSiblingBranches]=useState<Branch[]>([]);
@@ -1295,7 +1296,9 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     const u6=subscribeToCategories(branchId,setCats);
     const u7=subscribeToStaff(branchId,setStaffList);
     // Real-time settings — manager name тэр дороо ачаална
-    const u9=subscribeToSettings(branchId,(s:any)=>{if(s.managerName)setManagerName(s.managerName);});
+    const u9=subscribeToSettings(branchId,(s:any)=>{
+      if(s.managerName){setManagerName(s.managerName);managerNameRef.current=s.managerName;}
+    });
     let cancelled=false;
     let u8:()=>void=()=>{};
     if(isManager&&mgrLicKey){
