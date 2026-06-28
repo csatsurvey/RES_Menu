@@ -1556,7 +1556,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
       {/* ── MAIN CONTENT ── */}
       <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column' as const}}>
         {/* Mobile top bar */}
-        {mob&&<div style={{background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.65rem 1rem',display:'flex',alignItems:'center',gap:'0.75rem',position:'sticky' as const,top:0,zIndex:10,flexShrink:0}}>
+        {mob&&<div style={{background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.65rem 1rem',paddingTop:'calc(0.65rem + env(safe-area-inset-top, 0px))',display:'flex',alignItems:'center',gap:'0.75rem',position:'sticky' as const,top:0,zIndex:10,flexShrink:0}}>
           <button onClick={()=>setShowSidebar(true)} style={{background:'none',border:'none',color:C.yellow,fontSize:'1.5rem',cursor:'pointer',padding:0,lineHeight:1,touchAction:'manipulation' as any}}>☰</button>
           <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.82rem',margin:0,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
           <span style={{color:C.muted,fontSize:'0.72rem'}}>{NAV.find(n=>n.id===tab)?.label}</span>
