@@ -504,12 +504,6 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
     </div>
   );
 }
-  const [sc,setSc]=useState<Record<SK,number>>({foodQuality:0,ambiance:0,staffAttitude:0,priceValue:0,service:0});
-  const [nps,setNps]=useState(-1);
-  const [fb,setFb]=useState('');
-  const [ph,setPh]=useState('');
-  const [loading,setLoading]=useState(false);
-  const [ok,setOk]=useState(false);
 
 
 function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
