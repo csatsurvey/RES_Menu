@@ -1041,9 +1041,9 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
         <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem'}}>+ Шинэ хоол</button>
       </div>
       {disp.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>🍽️</div><p>{cf==='__inactive__'?'Идэвхгүй хоол байхгүй':'Хоол байхгүй'}</p></div>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:'0.75rem'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(240px,100%),1fr))',gap:'0.75rem',overflow:'hidden'}}>
         {disp.map(item=>(
-          <div key={item.id} style={{...CS,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6}}>
+          <div key={item.id} style={{...CS,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6,minWidth:0}}>
             {item.image&&<div style={{height:'140px',overflow:'hidden'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
             <div style={{padding:'0.875rem'}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start'}}>
