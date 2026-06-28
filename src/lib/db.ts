@@ -52,7 +52,8 @@ export interface Order {
   id: string;
   tableNumber: number;
   items: OrderItem[];
-  status: 'pending' | 'preparing' | 'ready' | 'served';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  orderNumber?: string;   // A001, A002...
   customerPhone?: string;
   notes?: string;
   totalAmount: number;
@@ -224,8 +225,12 @@ export const getStaff = async (branchId: string): Promise<Staff[]> => {
   return Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val }));
 };
 
-export const removeStaff = async (branchId: string, staffId: string): Promise<void> => {
-  await remove(ref(db, `branches/${branchId}/staff/${staffId}`));
+export const removeStaff = async (branchId: string, staffId: string, deletedBy?: string): Promise<void> => {
+  await update(ref(db, `branches/${branchId}/staff/${staffId}`), {
+    active: false,
+    deletedAt: Date.now(),
+    deletedBy: deletedBy || 'Менежер',
+  });
 };
 
 export const subscribeToStaff = (
@@ -235,7 +240,10 @@ export const subscribeToStaff = (
   const r = ref(db, `branches/${branchId}/staff`);
   const h = onValue(r, (snap) => {
     if (!snap.exists()) { callback([]); return; }
-    callback(Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val })));
+    // Soft delete: deletedAt байхгүй болон active !== false-г л харуулна
+    callback(Object.entries(snap.val())
+      .map(([id, val]: any) => ({ id, ...val }))
+      .filter((s: any) => !s.deletedAt && s.active !== false));
   });
   return () => off(r, 'value', h);
 };
@@ -285,7 +293,10 @@ export const subscribeToMenu = (
   const r = ref(db, `branches/${branchId}/menu`);
   const handler = onValue(r, (snap) => {
     if (!snap.exists()) { callback([]); return; }
-    callback(Object.entries(snap.val()).map(([id, val]: any) => ({ id, ...val })));
+    // Soft delete: deletedAt байхгүй л харуулна
+    callback(Object.entries(snap.val())
+      .map(([id, val]: any) => ({ id, ...val }))
+      .filter((item: any) => !item.deletedAt));
   });
   return () => off(r, 'value', handler);
 };
@@ -301,11 +312,19 @@ export const createOrder = async (
   customerPhone?: string,
   notes?: string
 ): Promise<string> => {
+  // Order counter — A001, A002, A003...
+  const counterRef = ref(db, `branches/${branchId}/orderCounter`);
+  const snap = await get(counterRef);
+  const nextNum = (snap.exists() ? snap.val() : 0) + 1;
+  await set(counterRef, nextNum);
+  const orderNumber = `A${String(nextNum).padStart(3, '0')}`;
+
   const orderRef = push(ref(db, `branches/${branchId}/orders`));
   const now = Date.now();
   const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   await set(orderRef, {
     tableNumber,
+    orderNumber,
     items,
     status: 'pending',
     customerPhone: customerPhone || null,
@@ -330,7 +349,7 @@ export const updateOrderStatus = async (
 
 export const cancelOrder = async (branchId: string, orderId: string): Promise<void> => {
   await update(ref(db, `branches/${branchId}/orders/${orderId}`), {
-    status: 'cancelled' as any,
+    status: 'cancelled' as Order['status'],
     updatedAt: Date.now(),
   });
 };
@@ -443,6 +462,7 @@ export const ORDER_STATUS_LABELS: Record<Order['status'], string> = {
   preparing: 'Бэлтгэж байна',
   ready: 'Бэлэн болсон',
   served: 'Хүргэгдсэн',
+  cancelled: 'Цуцлагдсан',
 };
 
 export const ORDER_STATUS_COLORS: Record<Order['status'], string> = {
@@ -450,6 +470,7 @@ export const ORDER_STATUS_COLORS: Record<Order['status'], string> = {
   preparing: '#3B82F6',
   ready: '#10B981',
   served: '#6B7280',
+  cancelled: '#E74C3C',
 };
 
 // ── Menu item CRUD (complete) ────────────────────────
@@ -469,9 +490,14 @@ export const saveMenuItem = async (
 
 export const deleteMenuItem = async (
   branchId: string,
-  itemId: string
+  itemId: string,
+  deletedBy?: string
 ): Promise<void> => {
-  await remove(ref(db, `branches/${branchId}/menu/${itemId}`));
+  await update(ref(db, `branches/${branchId}/menu/${itemId}`), {
+    available: false,
+    deletedAt: Date.now(),
+    deletedBy: deletedBy || 'Менежер',
+  });
 };
 
 // ── Image compress to base64 (browser-side) ─────────
