@@ -700,7 +700,10 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
     <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
       <div style={{padding:'0.875rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:`1px solid ${C.border}`}}>
         <div>
-          <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
+          <div style={{display:'flex',alignItems:'baseline',gap:'0.5rem'}}>
+            <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
+            {(o as any).orderNumber&&<span style={{fontSize:'0.9rem',fontWeight:'800',color:C.yellow,background:`${C.yellow}18`,padding:'0.1rem 0.5rem',borderRadius:'8px'}}>{(o as any).orderNumber}</span>}
+          </div>
           {branchLabel&&<div style={{fontSize:'0.65rem',color:C.orange,fontWeight:'700',marginTop:'0.1rem'}}>📍 {branchLabel}</div>}
         </div>
         <div style={{textAlign:'right' as const}}>
