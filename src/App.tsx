@@ -121,6 +121,7 @@ function AppInner() {
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
+    else if(p.b){setBranchId(p.b);setTableNum(1);setView('customer');} // branchId only → customer view
     const goOn=()=>setIsOnline(true);
     const goOff=()=>setIsOnline(false);
     window.addEventListener('online',goOn);
@@ -455,11 +456,11 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
   };
 
   return(
-    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:'20px',padding:'1.5rem',width:'100%',maxWidth:'460px',maxHeight:'90vh',overflowY:'auto',border:`1px solid ${C.border}`}}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:'20px',padding:'1.5rem',width:'100%',maxWidth:'460px',maxHeight:'90dvh',overflowY:'auto' as const,border:`1px solid ${C.border}`,WebkitOverflowScrolling:'touch' as any}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
           <h3 style={{color:C.yellow,fontWeight:'800',margin:0,fontSize:'1rem'}}>⭐ Сэтгэл ханамжийн судалгаа</h3>
-          <button onClick={onClose} style={{background:'none',border:'none',color:C.muted,fontSize:'1.3rem',cursor:'pointer'}}>✕</button>
+          <button onClick={onClose} style={{background:'none',border:'none',color:C.muted,fontSize:'1.3rem',cursor:'pointer',touchAction:'manipulation' as const,padding:'0.5rem'}}>✕</button>
         </div>
         {ok
           ?<div style={{padding:'2rem',textAlign:'center' as const}}><div style={{fontSize:'3rem',marginBottom:'0.75rem'}}>🙏</div><p style={{color:C.green,fontWeight:'800',fontSize:'1.1rem',margin:'0 0 0.25rem'}}>Баярлалаа!</p><p style={{color:C.muted,fontSize:'0.85rem',margin:0}}>Таны санал бидэнд маш чухал</p></div>
@@ -469,7 +470,7 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
               <div key={i} style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.5rem'}}>
                 <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.5rem',fontSize:'0.875rem'}}>{i+1}. {q}</p>
                 <div style={{display:'flex',gap:'0.3rem'}}>
-                  {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))} style={{fontSize:'1.6rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.2,transition:'all 0.1s',padding:'0 2px'}}>⭐</button>)}
+                  {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))} style={{fontSize:'1.6rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.2,transition:'all 0.1s',padding:'0.25rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any}}>⭐</button>)}
                 </div>
               </div>
             ))}
@@ -478,31 +479,38 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
             <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.75rem'}}>
               <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.875rem'}}>Найз нөхөддөө санал болгох магадлал <span style={{color:C.muted,fontSize:'0.72rem'}}>(0–10, заавал биш)</span></p>
               <div style={{display:'flex',gap:'0.2rem',flexWrap:'wrap' as const}}>
-                {Array.from({length:11},(_,i)=><button key={i} onClick={()=>setNps(i)} style={{width:'34px',height:'34px',borderRadius:'6px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.78rem'}}>{i}</button>)}
+                {Array.from({length:11},(_,i)=><button key={i} onClick={()=>setNps(i)} style={{width:'36px',height:'36px',borderRadius:'6px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.78rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any}}>{i}</button>)}
               </div>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.66rem',color:C.muted,marginTop:'0.25rem'}}><span>Огт зөвлөхгүй</span><span>Заавал зөвлөнө</span></div>
             </div>
 
             {/* ИЛГЭЭХ — гол товч */}
-            <button onClick={submit} disabled={!can||loading}
-              style={{width:'100%',padding:'0.95rem',background:can?C.green:C.inpBg,color:can?'#fff':C.muted,border:'none',borderRadius:'12px',fontWeight:'800',cursor:can?'pointer':'not-allowed',fontSize:'1rem',transition:'all 0.2s',marginBottom:'0.75rem'}}>
-              {loading?'Илгээж байна...':can?'✅ ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
+            <button
+              onClick={submit}
+              disabled={!can||loading}
+              style={{width:'100%',padding:'1rem',background:can?C.green:'#2d2d38',color:can?'#fff':'rgba(255,255,255,0.3)',border:'none',borderRadius:'14px',fontWeight:'900',fontSize:'1.05rem',transition:'all 0.2s',marginBottom:'1rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any,cursor:can?'pointer':'not-allowed',boxShadow:can?'0 4px 16px rgba(46,204,113,0.35)':'none',letterSpacing:'0.04em'}}>
+              {loading?'⏳ Илгээж байна...':can?'✅  ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
             </button>
 
-            {/* Нэмэлт мэдээлэл — харагдахуйц заавал биш */}
-            <button onClick={()=>setShowExtra(!showExtra)} style={{width:'100%',background:'none',border:`1px dashed ${C.border}`,borderRadius:'10px',padding:'0.5rem',color:C.muted,cursor:'pointer',fontSize:'0.78rem',marginBottom:showExtra?'0.75rem':'0'}}>
-              {showExtra?'▲ Нэмэлт мэдээлэл нуух':'💬 Нэмэлт санал / Утас нэмэх (заавал биш)'}
-            </button>
-            {showExtra&&<>
-              <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2} placeholder="💬 Нэмэлт санал..." style={{...IS,resize:'none' as const,marginBottom:'0.5rem'}}/>
-              <input value={ph} onChange={e=>{setPh(e.target.value.replace(/\D/g,'').slice(0,8));setPhErr('');}}
-                placeholder="☎ Утасны дугаар (8 оронтой)" style={{...IS,borderColor:phErr?C.red:undefined}} inputMode="numeric"/>
-              {phErr&&<p style={{color:C.red,fontSize:'0.75rem',margin:'0.25rem 0 0',textAlign:'center' as const}}>{phErr}</p>}
-              {ph.length>0&&ph.length<8&&<p style={{color:C.muted,fontSize:'0.72rem',margin:'0.2rem 0 0',textAlign:'center' as const}}>{ph.length}/8</p>}
-              {(fb||ph.length===8)&&<button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.7rem',background:C.yellow,color:'#000',border:'none',borderRadius:'10px',fontWeight:'700',cursor:'pointer',marginTop:'0.5rem',fontSize:'0.875rem'}}>
-                {loading?'Илгээж байна...':'✅ Мэдээллийн хамт илгээх'}
-              </button>}
-            </>}
+            {/* Нэмэлт хэсэг — тодорхой карт хэлбэрээр */}
+            <div style={{border:`1px solid rgba(245,193,32,0.3)`,borderRadius:'14px',overflow:'hidden'}}>
+              <button onClick={()=>setShowExtra(!showExtra)} style={{width:'100%',background:`rgba(245,193,32,0.08)`,border:'none',padding:'0.875rem 1rem',cursor:'pointer',display:'flex',alignItems:'center',gap:'0.6rem',touchAction:'manipulation' as const}}>
+                <span style={{fontSize:'1.1rem'}}>💬</span>
+                <span style={{flex:1,textAlign:'left' as const,color:'rgba(255,255,255,0.8)',fontWeight:'600',fontSize:'0.875rem'}}>Нэмэлт санал эсвэл утас үлдээх</span>
+                <span style={{color:C.yellow,fontSize:'0.75rem',fontWeight:'700'}}>{showExtra?'▲ Хаах':'▼ Нэмэх'}</span>
+              </button>
+              {showExtra&&<div style={{padding:'0.875rem',background:'rgba(0,0,0,0.2)',borderTop:`1px solid rgba(245,193,32,0.15)`}}>
+                <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={3} placeholder="Санал, гомдол, сайшаал бичнэ үү..."
+                  style={{...IS,resize:'none' as const,marginBottom:'0.5rem',background:'rgba(255,255,255,0.06)'}}/>
+                <input value={ph} onChange={e=>{setPh(e.target.value.replace(/\D/g,'').slice(0,8));setPhErr('');}}
+                  placeholder="☎ Утасны дугаар (8 оронтой)" style={{...IS,borderColor:phErr?C.red:undefined,background:'rgba(255,255,255,0.06)'}} inputMode="numeric"/>
+                {phErr&&<p style={{color:C.red,fontSize:'0.75rem',margin:'0.25rem 0 0',textAlign:'center' as const}}>{phErr}</p>}
+                {(fb.length>0||ph.length===8)&&<button onClick={submit} disabled={loading}
+                  style={{width:'100%',padding:'0.75rem',background:C.yellow,color:'#000',border:'none',borderRadius:'10px',fontWeight:'800',marginTop:'0.75rem',cursor:'pointer',touchAction:'manipulation' as const}}>
+                  {loading?'⏳':'✅'} Мэдээллийн хамт илгээх
+                </button>}
+              </div>}
+            </div>
           </>}
       </div>
     </div>
@@ -698,11 +706,18 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
         ))}
         {o.notes&&<div style={{marginTop:'0.6rem',background:`${C.yellow}11`,border:`1px solid ${C.yellow}33`,borderRadius:'8px',padding:'0.4rem 0.65rem'}}><p style={{margin:0,fontSize:'0.82rem',color:C.yellow,fontWeight:'600'}}>📝 {o.notes}</p></div>}
       </div>
-      {NEXT[o.status]&&<div style={{padding:'0 1rem 1rem'}}>
+      {NEXT[o.status]&&<div style={{padding:'0 1rem 0.75rem',display:'flex',gap:'0.5rem'}}>
         <button onClick={async()=>{await updateOrderStatus(branchId,o.id,NEXT[o.status]!);await logActivity(branchId,'Ажилтан',`Захиалгын төлөв`,`Ширээ ${o.tableNumber}: ${NL[o.status]}`);}}
-          style={{width:'100%',padding:'0.8rem',background:NC[o.status],color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem'}}>
+          style={{flex:1,padding:'0.8rem',background:NC[o.status],color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',touchAction:'manipulation' as const}}>
           {NL[o.status]}
         </button>
+        {['pending','preparing'].includes(o.status)&&<button onClick={async()=>{
+          if(!confirm(`Ширээ ${o.tableNumber}-н захиалгыг цуцлах уу?`))return;
+          await updateOrderStatus(branchId,o.id,'served');
+          await logActivity(branchId,'Ажилтан','Захиалга цуцлагдлаа',`Ширээ ${o.tableNumber}`);
+        }} style={{padding:'0.8rem 0.875rem',background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'10px',color:C.red,cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',touchAction:'manipulation' as const}}>
+          ❌
+        </button>}
       </div>}
     </div>
   );
@@ -1286,6 +1301,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const pending=orders.filter(o=>o.status==='pending').length;
   const [managerName,setManagerName]=useState('');
   const managerNameRef=useRef('');
+  // Ref-г state-тэй sync байлга (stale closure-аас сэргийлнэ)
+  useEffect(()=>{managerNameRef.current=managerName;},[managerName]);
   const [isMainBranch,setIsMainBranch]=useState(false);
   const logAct=(a:string,d?:string)=>logActivity(branchId,isManager?(managerNameRef.current||'Менежер'):(staff?.name||'Ажилтан'),a,d||'');
 
