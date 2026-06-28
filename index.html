@@ -11,69 +11,15 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <title>Ресторан Систем</title>
-    <style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{background:#0d0d12;font-family:sans-serif;min-height:100vh}
-      #fb{position:fixed;inset:0;background:#0d0d12;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:1}
-      #fb .ico{font-size:44px}
-      #fb .ttl{color:#F5C120;font-size:18px;font-weight:800;letter-spacing:2px}
-      #fb .sub{color:rgba(255,255,255,0.4);font-size:13px}
-      .spin{width:34px;height:34px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #F5C120;border-radius:50%;animation:sp 0.8s linear infinite}
-      @keyframes sp{to{transform:rotate(360deg)}}
-      #err{display:none;background:#1a0a0a;border:1px solid #E74C3C;border-radius:10px;padding:14px;margin:12px;max-width:500px;width:90%;word-break:break-all}
-      #err .et{color:#E74C3C;font-weight:700;font-size:13px;margin-bottom:8px}
-      #err .em{color:#ff9a9a;font-size:11px;font-family:monospace;white-space:pre-wrap}
-      #root{position:relative;z-index:2}
-    </style>
   </head>
   <body>
-    <div id="fb">
-      <div class="ico">🍽️</div>
-      <div class="ttl">РЕСТОРАН СИСТЕМ</div>
-      <div class="spin"></div>
-      <div class="sub" id="st">Ачааллаж байна...</div>
-      <div id="err"><div class="et">⚠️ Алдаа гарлаа — screenshot авч илгээнэ үү</div><div class="em" id="em"></div></div>
-    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // SW болон cache бүгдийг устга
       if('serviceWorker' in navigator){
         navigator.serviceWorker.getRegistrations().then(r=>r.forEach(x=>x.unregister()));
         caches.keys().then(k=>k.forEach(x=>caches.delete(x)));
       }
-
-      // Алдааг дэлгэцэнд харуулах
-      function showErr(msg){
-        document.getElementById('st').textContent='Алдаа гарлаа';
-        document.getElementById('err').style.display='block';
-        document.getElementById('em').textContent=msg;
-        document.querySelector('.spin').style.display='none';
-      }
-
-      window.onerror=function(msg,src,line,col,err){
-        showErr((err?err.stack:'')||msg||'Unknown error');
-        return false;
-      };
-      window.addEventListener('unhandledrejection',function(e){
-        showErr(e.reason?.stack||String(e.reason)||'Promise rejected');
-      });
-
-      // React mount шалгах
-      const ob=new MutationObserver(()=>{
-        if(document.getElementById('root').children.length>0){
-          document.getElementById('fb').style.display='none';
-          ob.disconnect();
-        }
-      });
-      ob.observe(document.getElementById('root'),{childList:true,subtree:true});
-
-      // 10 секундт ч ачааллаагүй бол алдаа харуулна
-      setTimeout(()=>{
-        if(document.getElementById('root').children.length===0){
-          showErr('10 секундын дотор React ачаалагдсангүй.\nConsole → F12 → Errors шалгана уу');
-        }
-      },10000);
     </script>
   </body>
 </html>
