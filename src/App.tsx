@@ -1515,8 +1515,15 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   const curSurveys=cTab==='p'?cpd:cTab==='r'?crs:can;
 
+  const [mob,setMob]=useState(typeof window!=='undefined'&&window.innerWidth<768);
+  useEffect(()=>{
+    const mq=window.matchMedia('(max-width:767px)');
+    const h=(e:MediaQueryListEvent)=>setMob(e.matches);
+    setMob(mq.matches);
+    mq.addEventListener('change',h);
+    return()=>mq.removeEventListener('change',h);
+  },[]);
   const [showSidebar,setShowSidebar]=useState(false);
-  const mob=typeof window!=='undefined'&&window.innerWidth<768;
 
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex'}}>
