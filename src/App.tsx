@@ -1029,22 +1029,22 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
   const disp=cf==='__inactive__'?ini:cf==='__all__'?ai:ai.filter(i=>i.category===cf);
   const tog=async(item:MenuItem)=>{await updateMenuItem(branchId,item.id!,{available:!item.available});logAct(item.available?'Хоол хаагдлаа':'Хоол нээгдлэв',item.name);};
   return(
-    <div>
+    <div style={{overflowX:'hidden',width:'100%'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.875rem',flexWrap:'wrap' as const,gap:'0.5rem'}}>
-        <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap' as const}}>
+        <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap' as const,flex:1,minWidth:0}}>
           {[{k:'__all__',l:`Бүгд (${ai.length})`},{k:'__inactive__',l:`Идэвхгүй (${ini.length})`},...aCats.map(c=>({k:c,l:c}))].map(t=>(
             <button key={t.k} onClick={()=>setCf(t.k)} style={{padding:'0.35rem 0.7rem',borderRadius:'20px',border:`1px solid ${cf===t.k?C.yellow:C.border}`,background:cf===t.k?`${C.yellow}22`:'transparent',color:cf===t.k?C.yellow:C.muted,fontWeight:cf===t.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>
               {t.l}
             </button>
           ))}
         </div>
-        <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem'}}>+ Шинэ хоол</button>
+        <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem',flexShrink:0}}>+ Шинэ хоол</button>
       </div>
       {disp.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>🍽️</div><p>{cf==='__inactive__'?'Идэвхгүй хоол байхгүй':'Хоол байхгүй'}</p></div>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(240px,100%),1fr))',gap:'0.75rem',overflow:'hidden'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(min(240px,100%),1fr))',gap:'0.75rem'}}>
         {disp.map(item=>(
-          <div key={item.id} style={{...CS,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6,minWidth:0}}>
-            {item.image&&<div style={{height:'140px',overflow:'hidden'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
+          <div key={item.id} style={{...CS,marginBottom:0,padding:0,overflow:'hidden',opacity:item.available?1:0.6,minWidth:0,width:'100%'}}>
+            {item.image&&<div style={{height:'140px',overflow:'hidden',width:'100%'}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',maxWidth:'100%'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
             <div style={{padding:'0.875rem'}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start'}}>
                 <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,paddingRight:'0.5rem'}}>{item.name}</span>
