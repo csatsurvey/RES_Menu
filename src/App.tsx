@@ -471,13 +471,13 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
               <div key={i} style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.5rem'}}>
                 <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.5rem',fontSize:'0.875rem'}}>{i+1}. {q}</p>
                 <div style={{display:'flex',gap:'0.3rem'}}>
-                  {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))} style={{fontSize:'1.6rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.2,transition:'all 0.1s',padding:'0.25rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any}}>⭐</button>)}
+                  {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))} style={{fontSize:'1.6rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.2,padding:'0.25rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any}}>⭐</button>)}
                 </div>
               </div>
             ))}
 
             {/* NPS */}
-            <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'0.75rem'}}>
+            <div style={{background:C.inpBg,borderRadius:'10px',padding:'0.875rem',marginBottom:'1rem'}}>
               <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.875rem'}}>Найз нөхөддөө санал болгох магадлал <span style={{color:C.muted,fontSize:'0.72rem'}}>(0–10, заавал биш)</span></p>
               <div style={{display:'flex',gap:'0.2rem',flexWrap:'wrap' as const}}>
                 {Array.from({length:11},(_,i)=><button key={i} onClick={()=>setNps(i)} style={{width:'36px',height:'36px',borderRadius:'6px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.78rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any}}>{i}</button>)}
@@ -485,36 +485,24 @@ function SurveyModal({branchId,tableNum,onClose}:{branchId:string;tableNum:numbe
               <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.66rem',color:C.muted,marginTop:'0.25rem'}}><span>Огт зөвлөхгүй</span><span>Заавал зөвлөнө</span></div>
             </div>
 
-            {/* ИЛГЭЭХ — гол товч */}
+            {/* Нэмэлт — ЗААВАЛ БИШ, үргэлж харагдана */}
+            <div style={{background:'rgba(255,255,255,0.03)',border:`1px dashed ${C.border}`,borderRadius:'12px',padding:'0.875rem',marginBottom:'1rem'}}>
+              <p style={{color:C.muted,fontSize:'0.75rem',fontWeight:'600',margin:'0 0 0.6rem',textTransform:'uppercase' as const,letterSpacing:'0.04em'}}>💬 Нэмэлт санал — заавал биш</p>
+              <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2}
+                placeholder="Санал, гомдол, сайшаал..."
+                style={{...IS,resize:'none' as const,marginBottom:'0.5rem',background:'rgba(255,255,255,0.05)',fontSize:'0.875rem'}}/>
+              <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))}
+                placeholder="☎ Утасны дугаар (8 оронтой) — заавал биш"
+                style={{...IS,background:'rgba(255,255,255,0.05)',fontSize:'0.875rem'}} inputMode="numeric"/>
+            </div>
+
+            {/* ИЛГЭЭХ — үргэлж ажиллана */}
             <button
               onClick={submit}
               disabled={!can||loading}
-              style={{width:'100%',padding:'1rem',background:can?C.green:'#2d2d38',color:can?'#fff':'rgba(255,255,255,0.3)',border:'none',borderRadius:'14px',fontWeight:'900',fontSize:'1.05rem',transition:'all 0.2s',marginBottom:'1rem',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any,cursor:can?'pointer':'not-allowed',boxShadow:can?'0 4px 16px rgba(46,204,113,0.35)':'none',letterSpacing:'0.04em'}}>
+              style={{width:'100%',padding:'1rem',background:can?C.green:'#2d2d38',color:can?'#fff':'rgba(255,255,255,0.3)',border:'none',borderRadius:'14px',fontWeight:'900',fontSize:'1.05rem',transition:'all 0.2s',touchAction:'manipulation' as const,WebkitTapHighlightColor:'transparent' as any,cursor:can?'pointer':'not-allowed',boxShadow:can?'0 4px 16px rgba(46,204,113,0.35)':'none',letterSpacing:'0.04em'}}>
               {loading?'⏳ Илгээж байна...':can?'✅  ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
             </button>
-
-            {/* Нэмэлт хэсэг — тодорхой карт хэлбэрээр */}
-            <div style={{border:`1px solid rgba(245,193,32,0.3)`,borderRadius:'14px',overflow:'hidden'}}>
-              <button onClick={()=>setShowExtra(!showExtra)} style={{width:'100%',background:`rgba(245,193,32,0.08)`,border:'none',padding:'0.875rem 1rem',cursor:'pointer',display:'flex',alignItems:'center',gap:'0.6rem',touchAction:'manipulation' as const}}>
-                <span style={{fontSize:'1.1rem'}}>💬</span>
-                <span style={{flex:1,textAlign:'left' as const,color:'rgba(255,255,255,0.8)',fontWeight:'600',fontSize:'0.875rem'}}>Нэмэлт санал эсвэл утас үлдээх</span>
-                <span style={{color:C.yellow,fontSize:'0.75rem',fontWeight:'700'}}>{showExtra?'▲ Хаах':'▼ Нэмэх'}</span>
-              </button>
-              {showExtra&&<div style={{padding:'0.875rem',background:'rgba(0,0,0,0.2)',borderTop:`1px solid rgba(245,193,32,0.15)`}}>
-                <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={3} placeholder="Санал, гомдол, сайшаал бичнэ үү..."
-                  style={{...IS,resize:'none' as const,marginBottom:'0.5rem',background:'rgba(255,255,255,0.06)'}}/>
-                <input value={ph} onChange={e=>{setPh(e.target.value.replace(/\D/g,'').slice(0,8));setPhErr('');}}
-                  placeholder="☎ Утасны дугаар (8 оронтой)" style={{...IS,borderColor:phErr?C.red:undefined,background:'rgba(255,255,255,0.06)'}} inputMode="numeric"/>
-                {phErr&&<p style={{color:C.red,fontSize:'0.75rem',margin:'0.25rem 0 0',textAlign:'center' as const}}>{phErr}</p>}
-                {(fb.length>0||ph.length===8)&&<button onClick={async()=>{
-                    if(ph.length>0&&ph.length!==8){setPhErr('Утасны дугаар 8 оронтой байх ёстой');return;}
-                    submit();
-                  }} disabled={loading}
-                  style={{width:'100%',padding:'0.75rem',background:C.yellow,color:'#000',border:'none',borderRadius:'10px',fontWeight:'800',marginTop:'0.75rem',cursor:'pointer',touchAction:'manipulation' as const}}>
-                  {loading?'⏳':'✅'} Мэдээллийн хамт илгээх
-                </button>}
-              </div>}
-            </div>
           </>}
       </div>
     </div>
