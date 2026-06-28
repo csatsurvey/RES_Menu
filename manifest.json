@@ -1,12 +1,12 @@
 {
   "name": "Ресторан Систем",
   "short_name": "ResMenu",
-  "description": "Ресторан менежментийн систем — захиалга, цэс, судалгаа",
+  "description": "Ресторан менежментийн систем",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d0d12",
   "theme_color": "#E87B2F",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -21,14 +21,7 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshot.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
-  "categories": ["food", "business", "productivity"],
-  "lang": "mn"
+  "categories": ["food", "business"],
+  "lang": "mn",
+  "scope": "/"
 }
