@@ -1,69 +1,75 @@
-// ── Ресторан Систем PWA Service Worker v3 ──
-const CACHE_NAME = 'res-app-v3';
-const STATIC_ASSETS = ['/'];
+// ── Ресторан Систем PWA Service Worker v4 ──
+const CACHE_NAME = 'res-app-v4';
 
-// Install — кэш үүсгэх
+// Install
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  // Шууд хуучин SW-г солино — хүлээхгүй
+  self.skipWaiting();
 });
 
-// Activate — хуучин кэш устгах
+// Activate — хуучин cache устга, шинэ SW тэр дороо ажилла
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        keys.filter(k => k !== CACHE_NAME).map(k => {
+          console.log('[SW] Deleting old cache:', k);
+          return caches.delete(k);
+        })
       ))
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()) // Нээлттэй бүх tab-д тэр дороо хяналт авна
   );
 });
 
-// Fetch — Firebase real-time болон API-г bypass хийнэ
+// Message handler — index.html-ийн SKIP_WAITING дуудлага
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Fetch — Firebase real-time ALWAYS network
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Firebase, Google API — always network (real-time sync)
+  // Firebase, Google API → заавал network (real-time sync)
   if (
     url.hostname.includes('firebasedatabase.app') ||
     url.hostname.includes('firebaseio.com') ||
     url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('identitytoolkit.googleapis.com')
+    url.hostname.includes('firebaseapp.com')
   ) {
-    event.respondWith(fetch(event.request));
-    return;
+    return; // SW-г bypass — browser шууд ажиллуулна
   }
 
-  // HTML файл — network first (шинэ deploy тэр дороо харагдана)
+  // HTML файл → network first (шинэ deploy тэр дороо)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
           return response;
         })
-        .catch(() => caches.match('/') || caches.match('/index.html'))
+        .catch(() => caches.match(event.request) || caches.match('/'))
     );
     return;
   }
 
-  // JS/CSS/Image — stale-while-revalidate
+  // JS/CSS/зураг → network first (шинэ bundle тэр дороо)
   if (event.request.method === 'GET') {
     event.respondWith(
-      caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match(event.request);
-        const networkFetch = fetch(event.request)
-          .then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
-            return response;
-          })
-          .catch(() => null);
-        return cached || await networkFetch || new Response('', { status: 408 });
-      })
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
   }
 });
