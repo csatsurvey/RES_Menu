@@ -3,106 +3,107 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-
-    <!-- PWA Essential -->
     <meta name="theme-color" content="#E87B2F" />
     <link rel="manifest" href="/manifest.json" />
-
-    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ResMenu" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-
-    <!-- Windows/Android -->
-    <meta name="application-name" content="Ресторан Систем" />
-    <meta name="msapplication-TileColor" content="#E87B2F" />
-    <meta name="msapplication-TileImage" content="/icon-192.png" />
-
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <title>Ресторан Систем</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{background:#0d0d12;font-family:sans-serif;min-height:100vh}
+      #fallback{
+        position:fixed;inset:0;background:#0d0d12;
+        display:flex;flex-direction:column;align-items:center;
+        justify-content:center;gap:16px;z-index:1;
+      }
+      #fallback .icon{font-size:48px}
+      #fallback .title{color:#F5C120;font-size:20px;font-weight:800;letter-spacing:2px}
+      #fallback .sub{color:rgba(255,255,255,0.4);font-size:13px}
+      .spin{
+        width:36px;height:36px;
+        border:3px solid rgba(255,255,255,0.1);
+        border-top:3px solid #F5C120;
+        border-radius:50%;
+        animation:s 0.8s linear infinite;
+      }
+      @keyframes s{to{transform:rotate(360deg)}}
+      #root{position:relative;z-index:2}
+    </style>
   </head>
   <body>
+    <!-- React ачаалагдах хүртэл харагдах fallback -->
+    <div id="fallback">
+      <div class="icon">🍽️</div>
+      <div class="title">РЕСТОРАН СИСТЕМ</div>
+      <div class="spin"></div>
+      <div class="sub">Ачааллаж байна...</div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
     <script>
-      // ── PWA Service Worker бүртгэх ──
-      if ('serviceWorker' in navigator) {
-        // Хуучин SW-уудыг эхлээд цэвэрлэнэ
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          const old = regs.filter(r => !r.active?.scriptURL?.includes('/sw.js'));
-          old.forEach(r => r.unregister());
-        });
+      // ── БҮГД SERVICE WORKER, CACHE УСТГА ──
+      (async function clearAll() {
+        if (!('serviceWorker' in navigator)) return;
+        try {
+          // 1. Бүх SW unregister
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
 
-        // Шинэ SW бүртгэх
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' })
-            .then(reg => {
-              console.log('[PWA] Service Worker бүртгэгдлээ:', reg.scope);
-              // Шинэ хувилбар байвал автоматаар шинэчлэх
-              reg.addEventListener('updatefound', () => {
-                const newSW = reg.installing;
-                newSW?.addEventListener('statechange', () => {
-                  if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                    // Шинэ хувилбар бэлэн болсон — автоматаар reload
-                    newSW.postMessage({ type: 'SKIP_WAITING' });
-                    navigator.serviceWorker.addEventListener('controllerchange', () => {
-                      window.location.reload();
-                    });
-                  }
-                });
-              });
-            })
-            .catch(err => console.warn('[PWA] SW бүртгэлт амжилтгүй:', err));
-        });
-      }
+          // 2. Бүх cache устга
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
 
-      // ── Апп суулгах banner (Android/Chrome/Edge) ──
+          if (regs.length > 0 || keys.length > 0) {
+            console.log('[CACHE] Cleared', regs.length, 'SW,', keys.length, 'caches');
+          }
+        } catch(e) {
+          console.warn('[CACHE] Clear failed:', e);
+        }
+      })();
+
+      // ── React ачаалагдсан эсэхийг шалга ──
+      // #root-д контент орсон бол fallback арилгана
+      const observer = new MutationObserver(() => {
+        const root = document.getElementById('root');
+        if (root && root.children.length > 0) {
+          const fb = document.getElementById('fallback');
+          if (fb) fb.style.display = 'none';
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('root'), { childList: true, subtree: true });
+
+      // 8 секундын дараа ч React ачаалагдаагүй бол хуудас шинэчилнэ
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (!root || root.children.length === 0) {
+          console.warn('[APP] React load timeout, reloading...');
+          window.location.reload(true);
+        }
+      }, 8000);
+
+      // ── PWA суулгах banner ──
       let installPrompt = null;
       window.addEventListener('beforeinstallprompt', e => {
         e.preventDefault();
         installPrompt = e;
-
-        // Standalone горимд ажиллаж байвал banner харуулахгүй
         if (window.matchMedia('(display-mode: standalone)').matches) return;
-
-        // 2 секундын дараа banner гарна
         setTimeout(() => {
           if (!installPrompt) return;
-          const banner = document.createElement('div');
-          banner.id = 'pwa-banner';
-          banner.style.cssText = `
-            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-            background: #E87B2F; color: white; padding: 12px 20px;
-            border-radius: 24px; font-family: sans-serif; font-size: 14px;
-            font-weight: 700; cursor: pointer; z-index: 99999;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            display: flex; align-items: center; gap: 10px;
-            white-space: nowrap; max-width: 90vw;
-          `;
-          banner.innerHTML = `
-            <span style="font-size:20px">📲</span>
-            <span>Апп болгон суулгах</span>
-            <span onclick="event.stopPropagation();document.getElementById('pwa-banner').remove();installPrompt=null;"
-              style="opacity:0.7;font-size:18px;margin-left:4px">×</span>
-          `;
-          banner.onclick = async () => {
-            if (!installPrompt) return;
-            installPrompt.prompt();
-            const { outcome } = await installPrompt.userChoice;
-            if (outcome === 'accepted') banner.remove();
-            installPrompt = null;
-          };
-          document.body.appendChild(banner);
-        }, 2000);
+          const b = document.createElement('div');
+          b.id = 'pwa-b';
+          b.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#E87B2F;color:white;padding:12px 20px;border-radius:24px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px;white-space:nowrap;max-width:90vw;';
+          b.innerHTML = '<span>📲</span><span>Апп болгон суулгах</span><span onclick="event.stopPropagation();this.parentElement.remove();installPrompt=null;" style="opacity:0.7;font-size:18px;margin-left:4px">×</span>';
+          b.onclick = async () => { installPrompt.prompt(); const {outcome} = await installPrompt.userChoice; if(outcome==='accepted')b.remove(); installPrompt=null; };
+          document.body.appendChild(b);
+        }, 3000);
       });
-
-      // Суулгасны дараа banner автоматаар арилна
-      window.addEventListener('appinstalled', () => {
-        document.getElementById('pwa-banner')?.remove();
-        installPrompt = null;
-      });
+      window.addEventListener('appinstalled', () => { document.getElementById('pwa-b')?.remove(); });
     </script>
   </body>
 </html>
