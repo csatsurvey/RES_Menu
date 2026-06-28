@@ -117,11 +117,14 @@ function AppInner() {
   const [license,setLicense]=useState<LicenseCheck|null>(null);
   const [isOnline,setIsOnline]=useState(navigator.onLine);
 
+  const [qrReady,setQrReady]=useState(false);
+
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
-    else if(p.b){setBranchId(p.b);setTableNum(1);setView('customer');} // branchId only → customer view
+    else if(p.b){setBranchId(p.b);setTableNum(1);setView('customer');}
+    setQrReady(true);
     const goOn=()=>setIsOnline(true);
     const goOff=()=>setIsOnline(false);
     window.addEventListener('online',goOn);
@@ -141,7 +144,8 @@ function AppInner() {
     </div>}
     {view==='customer'&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
     {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
-    {view==='landing'&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
+    {view==='landing'&&qrReady&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
+    {view==='landing'&&!qrReady&&<div style={{minHeight:'100vh',background:'#0d0d12'}}/>}
   </>);
 }
 
@@ -538,11 +542,16 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   const [lightbox,setLightbox]=useState<string|null>(null);
   const [orderSuccess,setOrderSuccess]=useState(false);
 
+  const [dataLoaded,setDataLoaded]=useState(false);
+
   useEffect(()=>{
+    if(!branchId)return;
     getBranch(branchId).then(b=>b&&setBName(b.name));
-    const u1=subscribeToMenu(branchId,it=>setItems(it.filter(i=>i.available)));
+    let itemsLoaded=false,catsLoaded=false;
+    const trySetLoaded=()=>{if(itemsLoaded&&catsLoaded)setDataLoaded(true);};
+    const u1=subscribeToMenu(branchId,it=>{setItems(it.filter(i=>i.available));itemsLoaded=true;trySetLoaded();});
     const u2=subscribeToTableOrders(branchId,tableNum,setOrders);
-    const u3=subscribeToCategories(branchId,c=>setCats(c.filter(x=>x.visible)));
+    const u3=subscribeToCategories(branchId,c=>{setCats(c.filter(x=>x.visible));catsLoaded=true;trySetLoaded();});
     return()=>{u1();u2();u3();};
   },[branchId,tableNum]);
 
@@ -570,6 +579,15 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   };
 
   if(showSurvey)return<SurveyPage branchId={branchId} tableNum={tableNum} onBack={()=>setShowSurvey(false)}/>;
+
+  // Ачааллаж байх үед spinner харуулна
+  if(!dataLoaded)return(
+    <div style={{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',gap:'1rem'}}>
+      <div style={{width:'48px',height:'48px',border:`3px solid ${C.border}`,borderTop:`3px solid ${C.yellow}`,borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+      <p style={{color:C.muted,fontSize:'0.85rem',margin:0}}>Цэс ачааллаж байна...</p>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   return(
     <div style={{minHeight:'100vh',background:C.bg,paddingBottom:'80px'}}>
