@@ -481,25 +481,25 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
           </div>
           <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.65rem',color:C.muted}}><span>Зөвлөхгүй</span><span>Заавал зөвлөнө</span></div>
         </div>
-        {/* Нэмэлт */}
-        <div style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'1rem',border:`1px solid ${C.border}`}}>
-          <p style={{color:C.muted,fontWeight:'600',fontSize:'0.8rem',margin:'0 0 0.6rem',textTransform:'uppercase' as const,letterSpacing:'0.04em'}}>💬 Нэмэлт санал — заавал биш</p>
-          <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={3}
-            placeholder="Санал, гомдол, сайшаал..."
-            style={{...IS,resize:'none' as const,marginBottom:'0.5rem',fontSize:'0.9rem'}}/>
-          <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))}
-            placeholder="☎ Утасны дугаар (8 оронтой) — заавал биш"
-            style={{...IS,fontSize:'0.9rem'}} inputMode="numeric"/>
-        </div>
-        {/* Submit */}
+        {/* Submit — нэмэлт талбаруудын өмнө */}
         <button onClick={submit} disabled={!can||loading}
           style={{width:'100%',padding:'1.1rem',borderRadius:'14px',border:'none',
             background:can?C.green:'#2a2a35',color:can?'white':'rgba(255,255,255,0.3)',
             fontWeight:'900',fontSize:'1.1rem',cursor:can?'pointer':'default',
             boxShadow:can?'0 4px 20px rgba(46,204,113,0.4)':'none',
-            marginBottom:'2rem',letterSpacing:'0.04em'}}>
+            marginBottom:'1rem',letterSpacing:'0.04em'}}>
           {loading?'⏳ Илгээж байна...':can?'✅  ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
         </button>
+        {/* Нэмэлт — заавал биш, submit-ийн доор */}
+        <div style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'2rem',border:`1px solid rgba(255,255,255,0.06)`}}>
+          <p style={{color:C.muted,fontWeight:'600',fontSize:'0.75rem',margin:'0 0 0.6rem',letterSpacing:'0.04em'}}>💬 НЭМЭЛТ САНАЛ / УТАС — ЗААВАЛ БИШ</p>
+          <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2}
+            placeholder="Санал, гомдол..."
+            style={{...IS,resize:'none' as const,marginBottom:'0.5rem',fontSize:'0.9rem'}}/>
+          <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))}
+            placeholder="☎ Утасны дугаар (8 оронтой)"
+            style={{...IS,fontSize:'0.9rem'}} inputMode="numeric"/>
+        </div>
       </div>
     </div>
   );
