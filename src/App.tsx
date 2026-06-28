@@ -117,18 +117,11 @@ function AppInner() {
   const [license,setLicense]=useState<LicenseCheck|null>(null);
   const [isOnline,setIsOnline]=useState(navigator.onLine);
 
-  const [qrDone,setQrDone]=useState(()=>{
-    // QR params байвал false (useEffect хүлээнэ), байхгүй бол шууд true
-    const p=new URLSearchParams(window.location.search);
-    return !p.get('b');
-  });
-
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
     else if(p.b){setBranchId(p.b);setTableNum(1);setView('customer');}
-    setQrDone(true);
     const goOn=()=>setIsOnline(true);
     const goOff=()=>setIsOnline(false);
     window.addEventListener('online',goOn);
@@ -143,12 +136,11 @@ function AppInner() {
   };
   return(<>
     {!isOnline&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#E74C3C',color:'white',textAlign:'center',padding:'0.4rem 1rem',fontSize:'0.78rem',fontWeight:'700',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.5rem'}}>
-      <span>📵</span>
-      <span>Интернэтгүй — офлайн горим. Захиалгууд дахин холбогдоход автоматаар синхрончлогдоно.</span>
+      <span>📵</span><span>Интернэтгүй — офлайн горим</span>
     </div>}
-    {view==='customer'&&qrDone&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
-    {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
     {view==='landing'&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
+    {view==='customer'&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
+    {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
   </>);
 }
 
