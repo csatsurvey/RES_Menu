@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Branch, Table, Order, Survey, Staff, MenuItem, Category,
@@ -914,7 +914,7 @@ function LogsTab({logs,sibLogs,siblingBranches,branchId,bName,isMulti}:{logs:Act
   const now=Date.now();const ms={today:86400000,'7d':604800000,'1m':2592000000};
 
   // Merge logs from all branches with branch label
-  const allLogs=React.useMemo(()=>{
+  const allLogs=useMemo(()=>{
     if(!isMulti||logBranch===branchId)return logs.map(l=>({...l,_bn:''}));
     if(logBranch==='all'){
       const cur=logs.map(l=>({...l,_bn:bName||''}));
@@ -1328,7 +1328,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   // ── Multi-branch: sibling branches + global branch filter ──
   const [siblingBranches,setSiblingBranches]=useState<Branch[]>([]);
-  const mgrLicKey=React.useMemo(()=>localStorage.getItem('res_mgr_license_key')||'',[]);
+  const mgrLicKey=useMemo(()=>localStorage.getItem('res_mgr_license_key')||'',[]);
   // Global branch filter: 'all' | branchId
   const [gbf,setGbf]=useState<string>('all');
   // Sibling branch data
@@ -1382,25 +1382,25 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   // ── Effective data — isMulti зөвхөн үндсэн салбарын менежерт ──
   const isMulti=isManager&&isMainBranch&&siblingBranches.length>0;
-  const allBranchOpts=React.useMemo(()=>[
+  const allBranchOpts=useMemo(()=>[
     {id:branchId,name:bName||'Үндсэн салбар'},
     ...siblingBranches.map(b=>({id:b.id,name:b.name}))
   ],[branchId,bName,siblingBranches]);
 
-  const effectiveSurveys=React.useMemo(()=>{
+  const effectiveSurveys=useMemo(()=>{
     if(!isMulti||gbf===branchId)return surveys;
     if(gbf==='all')return[...surveys,...Object.values(sibSrvs).flat()];
     return sibSrvs[gbf]||[];
   },[isMulti,gbf,surveys,sibSrvs,branchId]);
 
-  const effectiveOrders=React.useMemo(()=>{
+  const effectiveOrders=useMemo(()=>{
     if(!isMulti||gbf===branchId)return orders;
     if(gbf==='all')return[...orders,...Object.values(sibOrds).flat()];
     return sibOrds[gbf]||[];
   },[isMulti,gbf,orders,sibOrds,branchId]);
 
   type StaffEx=Staff&{_bn:string;_bid:string};
-  const effectiveStaff=React.useMemo(():StaffEx[]=>{
+  const effectiveStaff=useMemo(():StaffEx[]=>{
     const cur=staffList.map(s=>({...s,_bn:bName||'',_bid:branchId}));
     if(!isMulti||gbf===branchId)return cur;
     if(gbf==='all')return[...cur,...Object.entries(sibStf as Record<string,Staff[]>).flatMap(([bid,stf])=>stf.map(s=>({...s,_bn:allBranchOpts.find(b=>b.id===bid)?.name||'',_bid:bid})))];
@@ -1443,7 +1443,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const [surveyTo,setSurveyTo]=useState('');
 
   // Date-filtered surveys for complaints (uses effectiveSurveys)
-  const filteredSurveys=React.useMemo(()=>{
+  const filteredSurveys=useMemo(()=>{
     if(surveyDf==='custom'&&surveyFrom&&surveyTo){
       const from=new Date(surveyFrom).getTime();
       const to=new Date(surveyTo).getTime()+86399999;
