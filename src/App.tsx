@@ -1300,8 +1300,6 @@ function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;o
   );
 }
 function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;onLogout:()=>void}) {
-  const {isMobile}=useScreenSize();
-  const [showMobMenu,setShowMobMenu]=useState(false);
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -1495,34 +1493,16 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
 
   return(
     <div style={{minHeight:'100vh',background:C.bg,display:'flex'}}>
-      {/* ── MOBILE: Overlay когда меню нээлттэй ── */}
-      {isMobile&&showMobMenu&&<div onClick={()=>setShowMobMenu(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:40}}/>}
-
       {/* ── SIDEBAR ── */}
-      <div style={{
-        width: isMobile?'280px':'220px',
-        background:C.sidebar,
-        borderRight:`1px solid ${C.border}`,
-        display:'flex',flexDirection:'column' as const,
-        flexShrink:0,
-        position:isMobile?'fixed' as const:'sticky' as const,
-        top:0,left:isMobile?(showMobMenu?0:-280):0,
-        height:'100vh',overflowY:'auto' as const,
-        zIndex:isMobile?50:1,
-        transition:'left 0.25s cubic-bezier(0.4,0,0.2,1)',
-        boxShadow:isMobile&&showMobMenu?'4px 0 24px rgba(0,0,0,0.5)':'none'
-      }}>
-        <div style={{padding:'1.25rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div>
-            <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.06em',margin:0}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
-            <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='admin'?'🔑 Ажлын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
-          </div>
-          {isMobile&&<button onClick={()=>setShowMobMenu(false)} style={{background:'none',border:'none',color:C.muted,fontSize:'1.4rem',cursor:'pointer',padding:'0.25rem'}}>✕</button>}
+      <div style={{width:'220px',background:C.sidebar,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column' as const,flexShrink:0,position:'sticky' as const,top:0,height:'100vh',overflowY:'auto' as const}}>
+        <div style={{padding:'1.25rem 1rem',borderBottom:`1px solid ${C.border}`}}>
+          <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.06em',margin:0}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
+          <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='admin'?'🔑 Ажлын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
         </div>
         <nav style={{flex:1,padding:'0.5rem 0'}}>
           {NAV.filter(n=>isManager||!n.mo).map(n=>(
-            <button key={n.id} onClick={()=>{setTab(n.id as AdminTab);setShowMobMenu(false);}} style={{width:'100%',padding:'0.7rem 1rem',border:'none',background:tab===n.id?`${C.orange}22`:'transparent',color:tab===n.id?C.yellow:C.muted,fontWeight:tab===n.id?'700':'500',cursor:'pointer',textAlign:'left' as const,fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.6rem',borderLeft:tab===n.id?`3px solid ${C.orange}`:'3px solid transparent',transition:'all 0.15s'}}>
-              <span style={{fontSize:'1rem'}}>{n.icon}</span><span style={{flex:1}}>{n.label}</span>
+            <button key={n.id} onClick={()=>setTab(n.id as AdminTab)} style={{width:'100%',padding:'0.7rem 1rem',border:'none',background:tab===n.id?`${C.orange}22`:'transparent',color:tab===n.id?C.yellow:C.muted,fontWeight:tab===n.id?'700':'500',cursor:'pointer',textAlign:'left' as const,fontSize:'0.82rem',display:'flex',alignItems:'center',gap:'0.6rem',borderLeft:tab===n.id?`3px solid ${C.orange}`:'3px solid transparent',transition:'all 0.15s'}}>
+              <span>{n.icon}</span><span style={{flex:1}}>{n.label}</span>
             </button>
           ))}
         </nav>
@@ -1533,22 +1513,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
       </div>
 
       {/* ── MAIN CONTENT ── */}
-      <div style={{flex:1,display:'flex',flexDirection:'column' as const,minWidth:0,minHeight:'100vh'}}>
-
-        {/* Mobile top bar */}
-        {isMobile&&<div style={{position:'sticky' as const,top:0,zIndex:30,background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.75rem 1rem',display:'flex',alignItems:'center',gap:'0.75rem',flexShrink:0}}>
-          <button onClick={()=>setShowMobMenu(true)} style={{background:'none',border:'none',color:C.yellow,fontSize:'1.4rem',cursor:'pointer',padding:'0.1rem',lineHeight:1}}>☰</button>
-          <div style={{flex:1,minWidth:0}}>
-            <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.82rem',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
-            <p style={{color:C.muted,fontSize:'0.68rem',margin:0}}>{NAV.find(n=>n.id===tab)?.label||'---'}</p>
-          </div>
-          {effectivePending>0&&<span style={{background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'12px',padding:'0.15rem 0.5rem',color:C.red,fontSize:'0.72rem',fontWeight:'700',flexShrink:0}}>
-            🔔 {effectivePending}
-          </span>}
-        </div>}
-
-        <div style={{flex:1,padding:isMobile?'0.875rem':'1.25rem 1.5rem',overflowY:'auto' as const}}>
-          <div style={{maxWidth:'960px',margin:'0 auto'}}>
+      <div style={{flex:1,padding:'1.25rem 1.5rem',overflowY:'auto' as const,minWidth:0}}>
+        <div style={{maxWidth:'960px',margin:'0 auto'}}>
         {(license!==null&&!license.valid)&&<div style={{textAlign:'center' as const,padding:'4rem 2rem'}}>
           <div style={{fontSize:'3.5rem',marginBottom:'1rem'}}>🔒</div>
           <h2 style={{color:C.red,fontWeight:'800',marginBottom:'0.75rem',fontSize:'1.2rem'}}>{license.message}</h2>
@@ -1753,8 +1719,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           </div>
         </div>
       </div>}
-        </div>
-      </div>
+    </div>
   );
 }
 
