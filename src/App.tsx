@@ -433,7 +433,9 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
     try{
       const rated=KEYS.filter(k=>sc[k]>0);
       const csat=rated.length?Math.round(rated.reduce((s,k)=>s+sc[k],0)/rated.length):0;
-      await createSurvey(branchId,{tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||'',phone:ph.length===8?ph:undefined});
+      const data:any={tableNumber:tableNum,...sc,csat,nps:nps>=0?nps:5,feedback:fb||''};
+      if(ph.length===8)data.phone=ph;
+      await createSurvey(branchId,data);
       setOk(true);
       setTimeout(()=>onBack(),2000);
     }catch(e:any){
