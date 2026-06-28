@@ -16,33 +16,14 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Хуучин service worker-уудыг бүгдийг устга (cache проблемоос сэргийлнэ)
       if ('serviceWorker' in navigator) {
-        // 1. Эхлэж бүх хуучин SW устга
         navigator.serviceWorker.getRegistrations().then(regs => {
           regs.forEach(r => r.unregister());
         });
-        // 2. Cache бүгдийг устга
-        if (window.caches) {
-          caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-        }
-        // 3. Шинэ SW бүртгэ
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js?v=4', { scope: '/' })
-            .then(reg => {
-              reg.addEventListener('updatefound', () => {
-                const sw = reg.installing;
-                if (!sw) return;
-                sw.addEventListener('statechange', () => {
-                  if (sw.state === 'installed') {
-                    sw.postMessage({ type: 'SKIP_WAITING' });
-                  }
-                });
-              });
-              navigator.serviceWorker.addEventListener('controllerchange', () => {
-                window.location.reload();
-              });
-            });
-        });
+      }
+      if (window.caches) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
       }
     </script>
   </body>
