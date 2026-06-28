@@ -285,7 +285,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   const resetStaffLic=()=>{setStaffLicKey('');setStaffLicInput('');try{localStorage.removeItem(STF_LIC_LS);}catch{}};
 
   // ── Shared UI styles ──
-  const cardStyle:CSSProperties={width:'100%',maxWidth:'420px',background:C.card,borderRadius:'24px',padding:'2rem 1.5rem',border:`1px solid ${C.border}`,display:'flex',flexDirection:'column',gap:'0.875rem',overflow:'hidden',boxSizing:'border-box'};
+  const cardStyle:CSSProperties={width:'100%',maxWidth:'420px',background:C.card,borderRadius:'24px',padding:'2rem 1.5rem',border:`1px solid ${C.border}`,display:'flex',flexDirection:'column',gap:'0.875rem',boxSizing:'border-box'};
   const BT=(p:{label:string;icon:string;sub:string;onClick:()=>void})=>(
     <button onClick={p.onClick} style={{padding:'1rem',background:'rgba(255,255,255,0.04)',border:`1px solid ${C.border}`,borderRadius:'14px',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.875rem'}}>
       <span style={{fontSize:'1.6rem'}}>{p.icon}</span>
