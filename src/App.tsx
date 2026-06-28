@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Component, Fragment } from 'react';
+import type { ReactNode, CSSProperties, ChangeEvent } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Branch, Table, Order, Survey, Staff, MenuItem, Category,
@@ -41,17 +42,6 @@ const SEED: Omit<MenuItem,'id'>[] = [
 const SEED_CATS = ['Үндсэн хоол','Шөл','Ундаа'];
 const DEF_Q = ['Хоолны амт, чанар хэр байсан бэ?','Рестораны орчин тойрон, цэвэр байдал','Үйлчилгээний ажилтан хандлага','Хоолны үнэ өртөг чанартаа нийцэж байна уу?','Нийт сэтгэл ханамж'];
 
-// ── Responsive hook ──
-function useScreenSize() {
-  const [w,setW]=useState(typeof window!=='undefined'?window.innerWidth:1024);
-  useEffect(()=>{
-    const h=()=>setW(window.innerWidth);
-    window.addEventListener('resize',h);
-    return()=>window.removeEventListener('resize',h);
-  },[]);
-  return{isMobile:w<768,isTablet:w>=768&&w<1024,isDesktop:w>=1024,width:w};
-}
-
 const KEYS = ['foodQuality','ambiance','staffAttitude','priceValue','service'] as const;
 type SK = typeof KEYS[number];
 
@@ -82,7 +72,7 @@ function CSelect({value,onChange,options,placeholder,style}:{value:string;onChan
 // ERROR BOUNDARY - catches runtime errors and shows them
 // ════════════════════════════════════════════════════════════
 interface EBState { error: string|null }
-class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState> {
+class ErrorBoundary extends Component<{children:ReactNode},EBState> {
   state: EBState = {error:null};
   static getDerivedStateFromError(e:Error): EBState {return{error:e.message+'\n'+e.stack};}
   componentDidCatch(e:Error,info:any){console.error('App Error:',e,info);}
@@ -278,7 +268,7 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
   const resetStaffLic=()=>{setStaffLicKey('');setStaffLicInput('');try{localStorage.removeItem(STF_LIC_LS);}catch{}};
 
   // ── Shared UI styles ──
-  const cardStyle:React.CSSProperties={width:'100%',maxWidth:'420px',background:C.card,borderRadius:'24px',padding:'2rem 1.5rem',border:`1px solid ${C.border}`,display:'flex',flexDirection:'column',gap:'0.875rem'};
+  const cardStyle:CSSProperties={width:'100%',maxWidth:'420px',background:C.card,borderRadius:'24px',padding:'2rem 1.5rem',border:`1px solid ${C.border}`,display:'flex',flexDirection:'column',gap:'0.875rem'};
   const BT=(p:{label:string;icon:string;sub:string;onClick:()=>void})=>(
     <button onClick={p.onClick} style={{padding:'1rem',background:'rgba(255,255,255,0.04)',border:`1px solid ${C.border}`,borderRadius:'14px',cursor:'pointer',textAlign:'left' as const,display:'flex',alignItems:'center',gap:'0.875rem'}}>
       <span style={{fontSize:'1.6rem'}}>{p.icon}</span>
@@ -1060,7 +1050,7 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
   const [upl,setUpl]=useState(false);
   const [err,setErr]=useState('');
   const fRef=useRef<HTMLInputElement>(null);
-  const hFile=async(e:React.ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file)return;setUpl(true);try{const b=await compressImage(file,700,0.78);setPrev(b);setForm((f:any)=>({...f,image:b}));}catch{setErr('Зураг алдаа');}setUpl(false);};
+  const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file)return;setUpl(true);try{const b=await compressImage(file,700,0.78);setPrev(b);setForm((f:any)=>({...f,image:b}));}catch{setErr('Зураг алдаа');}setUpl(false);};
   const save=async()=>{
     if(!form.name||!form.category||!form.price||isNaN(Number(form.price)))return setErr('Нэр, ангилал, үнэ шаардлагатай');
     setUpl(true);
@@ -1930,10 +1920,10 @@ function MultiBranchTab({currentBranchId,currentBranchName,siblingBranches,curre
         </div>}
         <div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap' as const}}>
           {displayBranches.map(b=>(
-            <React.Fragment key={b.id}>
+            <Fragment key={b.id}>
               <BranchStatCard branchId={b.id} branchName={b.name} isCurrent={b.isCurrent} filterMs={fms[df]}
                 currentOrders={b.isCurrent?currentOrders:undefined} currentSurveys={b.isCurrent?currentSurveys:undefined}/>
-            </React.Fragment>
+            </Fragment>
           ))}
         </div>
       </>}
