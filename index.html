@@ -14,96 +14,66 @@
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
       body{background:#0d0d12;font-family:sans-serif;min-height:100vh}
-      #fallback{
-        position:fixed;inset:0;background:#0d0d12;
-        display:flex;flex-direction:column;align-items:center;
-        justify-content:center;gap:16px;z-index:1;
-      }
-      #fallback .icon{font-size:48px}
-      #fallback .title{color:#F5C120;font-size:20px;font-weight:800;letter-spacing:2px}
-      #fallback .sub{color:rgba(255,255,255,0.4);font-size:13px}
-      .spin{
-        width:36px;height:36px;
-        border:3px solid rgba(255,255,255,0.1);
-        border-top:3px solid #F5C120;
-        border-radius:50%;
-        animation:s 0.8s linear infinite;
-      }
-      @keyframes s{to{transform:rotate(360deg)}}
+      #fb{position:fixed;inset:0;background:#0d0d12;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:1}
+      #fb .ico{font-size:44px}
+      #fb .ttl{color:#F5C120;font-size:18px;font-weight:800;letter-spacing:2px}
+      #fb .sub{color:rgba(255,255,255,0.4);font-size:13px}
+      .spin{width:34px;height:34px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #F5C120;border-radius:50%;animation:sp 0.8s linear infinite}
+      @keyframes sp{to{transform:rotate(360deg)}}
+      #err{display:none;background:#1a0a0a;border:1px solid #E74C3C;border-radius:10px;padding:14px;margin:12px;max-width:500px;width:90%;word-break:break-all}
+      #err .et{color:#E74C3C;font-weight:700;font-size:13px;margin-bottom:8px}
+      #err .em{color:#ff9a9a;font-size:11px;font-family:monospace;white-space:pre-wrap}
       #root{position:relative;z-index:2}
     </style>
   </head>
   <body>
-    <!-- React ачаалагдах хүртэл харагдах fallback -->
-    <div id="fallback">
-      <div class="icon">🍽️</div>
-      <div class="title">РЕСТОРАН СИСТЕМ</div>
+    <div id="fb">
+      <div class="ico">🍽️</div>
+      <div class="ttl">РЕСТОРАН СИСТЕМ</div>
       <div class="spin"></div>
-      <div class="sub">Ачааллаж байна...</div>
+      <div class="sub" id="st">Ачааллаж байна...</div>
+      <div id="err"><div class="et">⚠️ Алдаа гарлаа — screenshot авч илгээнэ үү</div><div class="em" id="em"></div></div>
     </div>
-
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-
     <script>
-      // ── БҮГД SERVICE WORKER, CACHE УСТГА ──
-      (async function clearAll() {
-        if (!('serviceWorker' in navigator)) return;
-        try {
-          // 1. Бүх SW unregister
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map(r => r.unregister()));
+      // SW болон cache бүгдийг устга
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.getRegistrations().then(r=>r.forEach(x=>x.unregister()));
+        caches.keys().then(k=>k.forEach(x=>caches.delete(x)));
+      }
 
-          // 2. Бүх cache устга
-          const keys = await caches.keys();
-          await Promise.all(keys.map(k => caches.delete(k)));
+      // Алдааг дэлгэцэнд харуулах
+      function showErr(msg){
+        document.getElementById('st').textContent='Алдаа гарлаа';
+        document.getElementById('err').style.display='block';
+        document.getElementById('em').textContent=msg;
+        document.querySelector('.spin').style.display='none';
+      }
 
-          if (regs.length > 0 || keys.length > 0) {
-            console.log('[CACHE] Cleared', regs.length, 'SW,', keys.length, 'caches');
-          }
-        } catch(e) {
-          console.warn('[CACHE] Clear failed:', e);
-        }
-      })();
+      window.onerror=function(msg,src,line,col,err){
+        showErr((err?err.stack:'')||msg||'Unknown error');
+        return false;
+      };
+      window.addEventListener('unhandledrejection',function(e){
+        showErr(e.reason?.stack||String(e.reason)||'Promise rejected');
+      });
 
-      // ── React ачаалагдсан эсэхийг шалга ──
-      // #root-д контент орсон бол fallback арилгана
-      const observer = new MutationObserver(() => {
-        const root = document.getElementById('root');
-        if (root && root.children.length > 0) {
-          const fb = document.getElementById('fallback');
-          if (fb) fb.style.display = 'none';
-          observer.disconnect();
+      // React mount шалгах
+      const ob=new MutationObserver(()=>{
+        if(document.getElementById('root').children.length>0){
+          document.getElementById('fb').style.display='none';
+          ob.disconnect();
         }
       });
-      observer.observe(document.getElementById('root'), { childList: true, subtree: true });
+      ob.observe(document.getElementById('root'),{childList:true,subtree:true});
 
-      // 8 секундын дараа ч React ачаалагдаагүй бол хуудас шинэчилнэ
-      setTimeout(() => {
-        const root = document.getElementById('root');
-        if (!root || root.children.length === 0) {
-          console.warn('[APP] React load timeout, reloading...');
-          window.location.reload(true);
+      // 10 секундт ч ачааллаагүй бол алдаа харуулна
+      setTimeout(()=>{
+        if(document.getElementById('root').children.length===0){
+          showErr('10 секундын дотор React ачаалагдсангүй.\nConsole → F12 → Errors шалгана уу');
         }
-      }, 8000);
-
-      // ── PWA суулгах banner ──
-      let installPrompt = null;
-      window.addEventListener('beforeinstallprompt', e => {
-        e.preventDefault();
-        installPrompt = e;
-        if (window.matchMedia('(display-mode: standalone)').matches) return;
-        setTimeout(() => {
-          if (!installPrompt) return;
-          const b = document.createElement('div');
-          b.id = 'pwa-b';
-          b.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#E87B2F;color:white;padding:12px 20px;border-radius:24px;font-family:sans-serif;font-size:14px;font-weight:700;cursor:pointer;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px;white-space:nowrap;max-width:90vw;';
-          b.innerHTML = '<span>📲</span><span>Апп болгон суулгах</span><span onclick="event.stopPropagation();this.parentElement.remove();installPrompt=null;" style="opacity:0.7;font-size:18px;margin-left:4px">×</span>';
-          b.onclick = async () => { installPrompt.prompt(); const {outcome} = await installPrompt.userChoice; if(outcome==='accepted')b.remove(); installPrompt=null; };
-          document.body.appendChild(b);
-        }, 3000);
-      });
-      window.addEventListener('appinstalled', () => { document.getElementById('pwa-b')?.remove(); });
+      },10000);
     </script>
   </body>
 </html>
