@@ -449,47 +449,63 @@ function SurveyPage({branchId,tableNum,onBack}:{branchId:string;tableNum:number;
     </div>
   );
   return(
-    <div style={{minHeight:'100vh',background:C.bg}}>
-      <div style={{background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.875rem 1.25rem',display:'flex',alignItems:'center',gap:'0.75rem',position:'sticky' as const,top:0,zIndex:10}}>
+    <div style={{height:'100vh',background:C.bg,display:'flex',flexDirection:'column' as const}}>
+      {/* Header */}
+      <div style={{background:C.sidebar,borderBottom:`1px solid ${C.border}`,padding:'0.875rem 1.25rem',display:'flex',alignItems:'center',gap:'0.75rem',flexShrink:0}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:C.muted,fontSize:'1.3rem',cursor:'pointer',padding:'0.25rem',lineHeight:1}}>←</button>
         <h2 style={{color:C.yellow,fontWeight:'800',margin:0,fontSize:'1rem'}}>⭐ Сэтгэл ханамжийн судалгаа</h2>
       </div>
-      <div style={{padding:'1rem',maxWidth:'480px',margin:'0 auto'}}>
-        {qs.map((q,i)=>(
-          <div key={i} style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'0.75rem',border:`1px solid ${C.border}`}}>
-            <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.75rem',fontSize:'0.9rem'}}>{i+1}. {q}</p>
-            <div style={{display:'flex',gap:'0.5rem'}}>
-              {[1,2,3,4,5].map(n=>(
-                <button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))}
-                  style={{flex:1,fontSize:'1.8rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.25,padding:'0.5rem 0',lineHeight:1}}>⭐</button>
+
+      {/* Scrollable content */}
+      <div style={{flex:1,overflowY:'auto' as const,padding:'1rem',WebkitOverflowScrolling:'touch' as any}}>
+        <div style={{maxWidth:'480px',margin:'0 auto',paddingBottom:'1rem'}}>
+          {qs.map((q,i)=>(
+            <div key={i} style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'0.75rem',border:`1px solid ${C.border}`}}>
+              <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.75rem',fontSize:'0.9rem'}}>{i+1}. {q}</p>
+              <div style={{display:'flex',gap:'0.5rem'}}>
+                {[1,2,3,4,5].map(n=>(
+                  <button key={n} onClick={()=>setSc(s=>({...s,[KEYS[i]]:n}))}
+                    style={{flex:1,fontSize:'1.8rem',background:'none',border:'none',cursor:'pointer',opacity:sc[KEYS[i]]>=n?1:0.25,padding:'0.5rem 0',lineHeight:1,touchAction:'manipulation' as any}}>⭐</button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'0.75rem',border:`1px solid ${C.border}`}}>
+            <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.9rem'}}>Найз нөхөддөө санал болгох уу? <span style={{color:C.muted,fontWeight:'400',fontSize:'0.78rem'}}>(заавал биш)</span></p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'0.3rem'}}>
+              {Array.from({length:11},(_,i)=>(
+                <button key={i} onClick={()=>setNps(i)}
+                  style={{padding:'0.6rem 0',borderRadius:'8px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.85rem',touchAction:'manipulation' as any}}>
+                  {i}
+                </button>
               ))}
             </div>
           </div>
-        ))}
-        <div style={{background:C.card,borderRadius:'12px',padding:'1rem',marginBottom:'1rem',border:`1px solid ${C.border}`}}>
-          <p style={{color:C.text,fontWeight:'600',margin:'0 0 0.6rem',fontSize:'0.9rem'}}>Найз нөхөддөө санал болгох уу? <span style={{color:C.muted,fontWeight:'400',fontSize:'0.78rem'}}>(заавал биш)</span></p>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'0.3rem'}}>
-            {Array.from({length:11},(_,i)=>(
-              <button key={i} onClick={()=>setNps(i)}
-                style={{padding:'0.6rem 0',borderRadius:'8px',border:`1px solid ${nps===i?C.yellow:C.border}`,fontWeight:'700',cursor:'pointer',background:nps===i?C.yellow:'transparent',color:nps===i?'#000':C.muted,fontSize:'0.85rem'}}>
-                {i}
-              </button>
-            ))}
+          <div style={{background:'rgba(255,255,255,0.03)',borderRadius:'12px',padding:'1rem',border:`1px dashed rgba(255,255,255,0.1)`}}>
+            <p style={{color:C.muted,fontSize:'0.75rem',margin:'0 0 0.6rem'}}>💬 Нэмэлт санал / утас (заавал биш)</p>
+            <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2} placeholder="Санал, гомдол..." style={{...IS,resize:'none' as const,marginBottom:'0.5rem',fontSize:'0.875rem'}}/>
+            <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="☎ Утасны дугаар" style={{...IS,fontSize:'0.875rem'}} inputMode="numeric"/>
           </div>
         </div>
-        {err&&<div style={{background:'#1a0808',border:'1px solid #E74C3C',borderRadius:'10px',padding:'0.75rem',marginBottom:'0.75rem',color:'#ff9a9a',fontSize:'0.82rem'}}>⚠️ {err}</div>}
+      </div>
+
+      {/* Fixed submit button at bottom */}
+      <div style={{flexShrink:0,padding:'0.875rem 1rem',background:C.bg,borderTop:`1px solid ${C.border}`}}>
+        {err&&<p style={{color:'#ff6b6b',fontSize:'0.8rem',margin:'0 0 0.5rem',textAlign:'center' as const}}>⚠️ {err}</p>}
         <button
           onClick={submit}
-          onTouchEnd={e=>{e.preventDefault();submit();}}
           disabled={!can||loading}
-          style={{width:'100%',padding:'1.1rem',borderRadius:'14px',border:'none',background:can?C.green:'#2a2a35',color:can?'white':'rgba(255,255,255,0.3)',fontWeight:'900',fontSize:'1.1rem',cursor:can?'pointer':'default',boxShadow:can?'0 4px 20px rgba(46,204,113,0.4)':'none',marginBottom:'1rem',letterSpacing:'0.04em',WebkitTapHighlightColor:'transparent' as any,touchAction:'manipulation' as any}}>
+          style={{width:'100%',padding:'1rem',borderRadius:'14px',border:'none',
+            background:can?C.green:'#2a2a35',
+            color:can?'white':'rgba(255,255,255,0.3)',
+            fontWeight:'900',fontSize:'1.1rem',
+            cursor:can?'pointer':'default',
+            boxShadow:can?'0 4px 20px rgba(46,204,113,0.4)':'none',
+            letterSpacing:'0.04em',
+            touchAction:'manipulation' as any,
+            WebkitTapHighlightColor:'transparent' as any}}>
           {loading?'⏳ Илгээж байна...':can?'✅  ИЛГЭЭХ':'⭐ Дор хаяж нэг үнэлгээ өгнө үү'}
         </button>
-        <div style={{background:'rgba(255,255,255,0.03)',borderRadius:'12px',padding:'1rem',marginBottom:'2rem',border:`1px dashed rgba(255,255,255,0.1)`}}>
-          <p style={{color:C.muted,fontSize:'0.75rem',margin:'0 0 0.6rem'}}>💬 Нэмэлт санал / утас (заавал биш)</p>
-          <textarea value={fb} onChange={e=>setFb(e.target.value)} rows={2} placeholder="Санал, гомдол..." style={{...IS,resize:'none' as const,marginBottom:'0.5rem',fontSize:'0.875rem'}}/>
-          <input value={ph} onChange={e=>setPh(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="☎ Утасны дугаар" style={{...IS,fontSize:'0.875rem'}} inputMode="numeric"/>
-        </div>
       </div>
     </div>
   );
