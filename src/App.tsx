@@ -117,14 +117,18 @@ function AppInner() {
   const [license,setLicense]=useState<LicenseCheck|null>(null);
   const [isOnline,setIsOnline]=useState(navigator.onLine);
 
-  const [qrReady,setQrReady]=useState(false);
+  const [qrDone,setQrDone]=useState(()=>{
+    // QR params байвал false (useEffect хүлээнэ), байхгүй бол шууд true
+    const p=new URLSearchParams(window.location.search);
+    return !p.get('b');
+  });
 
   useEffect(()=>{
     const p=getQR();
     if(p.b&&p.t){setBranchId(p.b);setTableNum(p.t);setView('customer');}
     else if(p.b&&(p.staff||p.kds)){setBranchId(p.b);setView('admin');}
     else if(p.b){setBranchId(p.b);setTableNum(1);setView('customer');}
-    setQrReady(true);
+    setQrDone(true);
     const goOn=()=>setIsOnline(true);
     const goOff=()=>setIsOnline(false);
     window.addEventListener('online',goOn);
@@ -142,10 +146,9 @@ function AppInner() {
       <span>📵</span>
       <span>Интернэтгүй — офлайн горим. Захиалгууд дахин холбогдоход автоматаар синхрончлогдоно.</span>
     </div>}
-    {view==='customer'&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
+    {view==='customer'&&qrDone&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
     {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
-    {view==='landing'&&qrReady&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
-    {view==='landing'&&!qrReady&&<div style={{minHeight:'100vh',background:'#0d0d12'}}/>}
+    {view==='landing'&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
   </>);
 }
 
