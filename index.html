@@ -3,28 +3,106 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA Essential -->
     <meta name="theme-color" content="#E87B2F" />
-    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ResMenu" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
+
+    <!-- Windows/Android -->
+    <meta name="application-name" content="Ресторан Систем" />
+    <meta name="msapplication-TileColor" content="#E87B2F" />
+    <meta name="msapplication-TileImage" content="/icon-192.png" />
+
+    <link rel="icon" type="image/png" href="/icon-192.png" />
     <title>Ресторан Систем</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
     <script>
-      // Хуучин service worker-уудыг бүгдийг устгана (DevTools автоматаар нээгдэхгүй болно)
+      // ── PWA Service Worker бүртгэх ──
       if ('serviceWorker' in navigator) {
+        // Хуучин SW-уудыг эхлээд цэвэрлэнэ
         navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => {
-            r.unregister();
-            console.log('[SW] Unregistered:', r.scope);
-          });
+          const old = regs.filter(r => !r.active?.scriptURL?.includes('/sw.js'));
+          old.forEach(r => r.unregister());
+        });
+
+        // Шинэ SW бүртгэх
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => {
+              console.log('[PWA] Service Worker бүртгэгдлээ:', reg.scope);
+              // Шинэ хувилбар байвал автоматаар шинэчлэх
+              reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing;
+                newSW?.addEventListener('statechange', () => {
+                  if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                    // Шинэ хувилбар бэлэн болсон — автоматаар reload
+                    newSW.postMessage({ type: 'SKIP_WAITING' });
+                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                      window.location.reload();
+                    });
+                  }
+                });
+              });
+            })
+            .catch(err => console.warn('[PWA] SW бүртгэлт амжилтгүй:', err));
         });
       }
+
+      // ── Апп суулгах banner (Android/Chrome/Edge) ──
+      let installPrompt = null;
+      window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        installPrompt = e;
+
+        // Standalone горимд ажиллаж байвал banner харуулахгүй
+        if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+        // 2 секундын дараа banner гарна
+        setTimeout(() => {
+          if (!installPrompt) return;
+          const banner = document.createElement('div');
+          banner.id = 'pwa-banner';
+          banner.style.cssText = `
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+            background: #E87B2F; color: white; padding: 12px 20px;
+            border-radius: 24px; font-family: sans-serif; font-size: 14px;
+            font-weight: 700; cursor: pointer; z-index: 99999;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            display: flex; align-items: center; gap: 10px;
+            white-space: nowrap; max-width: 90vw;
+          `;
+          banner.innerHTML = `
+            <span style="font-size:20px">📲</span>
+            <span>Апп болгон суулгах</span>
+            <span onclick="event.stopPropagation();document.getElementById('pwa-banner').remove();installPrompt=null;"
+              style="opacity:0.7;font-size:18px;margin-left:4px">×</span>
+          `;
+          banner.onclick = async () => {
+            if (!installPrompt) return;
+            installPrompt.prompt();
+            const { outcome } = await installPrompt.userChoice;
+            if (outcome === 'accepted') banner.remove();
+            installPrompt = null;
+          };
+          document.body.appendChild(banner);
+        }, 2000);
+      });
+
+      // Суулгасны дараа banner автоматаар арилна
+      window.addEventListener('appinstalled', () => {
+        document.getElementById('pwa-banner')?.remove();
+        installPrompt = null;
+      });
     </script>
   </body>
 </html>
