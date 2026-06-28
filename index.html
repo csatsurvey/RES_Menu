@@ -2,7 +2,7 @@
 <html lang="mn">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#E87B2F" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,11 +16,8 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Хуучин service worker-уудыг бүгдийг устга (cache проблемоос сэргийлнэ)
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => r.unregister());
-        });
+        navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister()));
       }
       if (window.caches) {
         caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
