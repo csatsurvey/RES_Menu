@@ -917,7 +917,9 @@ function LogsTab({logs,sibLogs,siblingBranches,branchId,bName,isMulti}:{logs:Act
   );
 }
 
-function CatTab({branchId,cats,logAct}:{branchId:string;cats:Category[];logAct:(a:string,d?:string)=>void}) {
+function CatTab({branchId,logAct}:{branchId:string;logAct:(a:string,d?:string)=>void}) {
+  const [cats,setCats]=useState<Category[]>([]);
+  useEffect(()=>{const u=subscribeToCategories(branchId,setCats);return u;},[branchId]);
   const [nm,setNm]=useState('');
   const [eId,setEId]=useState<string|null>(null);
   const [eNm,setENm]=useState('');
@@ -955,7 +957,14 @@ function CatTab({branchId,cats,logAct}:{branchId:string;cats:Category[];logAct:(
   );
 }
 
-function MenuTab({branchId,menuItems,cats,onEdit,onDel,onNew,logAct}:{branchId:string;menuItems:MenuItem[];cats:Category[];onEdit:(i:MenuItem)=>void;onDel:(id:string)=>void;onNew:()=>void;logAct:(a:string,d:string)=>void}) {
+function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i:MenuItem)=>void;onDel:(id:string)=>void;onNew:()=>void;logAct:(a:string,d:string)=>void}) {
+  const [menuItems,setMenuItems]=useState<MenuItem[]>([]);
+  const [cats,setCats]=useState<Category[]>([]);
+  useEffect(()=>{
+    const u1=subscribeToMenu(branchId,setMenuItems);
+    const u2=subscribeToCategories(branchId,setCats);
+    return()=>{u1();u2();};
+  },[branchId]);
   const [cf,setCf]=useState('__all__');
   const aCats=[...new Set(menuItems.map(i=>i.category))];
   const ai=menuItems.filter(i=>i.available),ini=menuItems.filter(i=>!i.available);
@@ -998,7 +1007,7 @@ function MenuTab({branchId,menuItems,cats,onEdit,onDel,onNew,logAct}:{branchId:s
   );
 }
 
-function MenuModal({branchId,init,cats,onClose}:{branchId:string;init:any;cats:Category[];onClose:()=>void}) {
+function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any;cats:Category[];onClose:()=>void;logAct:(a:string,d:string)=>void}) {
   const [form,setForm]=useState(init);
   const [prev,setPrev]=useState(init.image||'');
   const [upl,setUpl]=useState(false);
@@ -1009,7 +1018,7 @@ function MenuModal({branchId,init,cats,onClose}:{branchId:string;init:any;cats:C
     if(!form.name||!form.category||!form.price||isNaN(Number(form.price)))return setErr('Нэр, ангилал, үнэ шаардлагатай');
     setUpl(true);
     try{await saveMenuItem(branchId,{name:form.name.trim(),category:form.category.trim(),price:Number(form.price),description:form.description||'',allergens:form.allergens||'',image:form.image||'',available:form.available!==false,isSpecial:!!form.isSpecial,discountPercent:Number(form.discountPercent)||0} as any,form.id);
-      await logActivity(branchId,'Менежер',form.id?'Хоол засагдлаа':'Шинэ хоол нэмэгдлэв',`${form.name} — ₮${form.price}`);
+      logAct(form.id?'Хоол засагдлаа':'Шинэ хоол нэмэгдлэв',`${form.name} — ₮${form.price}`);
       onClose();}catch{setErr('Хадгалах алдаа');setUpl(false);}
   };
   const visCats=cats.filter(c=>c.visible);
@@ -1068,7 +1077,7 @@ function MenuModal({branchId,init,cats,onClose}:{branchId:string;init:any;cats:C
   );
 }
 
-function StaffEditModal({branchId,s,onClose,onSaved}:{branchId:string;s:Staff;onClose:()=>void;onSaved:()=>void}) {
+function StaffEditModal({branchId,s,onClose,onSaved,logAct}:{branchId:string;s:Staff;onClose:()=>void;onSaved:()=>void;logAct:(a:string,d:string)=>void}) {
   const [nm,setNm]=useState(s.name);
   const [rl,setRl]=useState<'chef'|'waiter'|'admin'>((s.role as any)||'chef');
   const [pin,setPin]=useState('');
@@ -1078,7 +1087,7 @@ function StaffEditModal({branchId,s,onClose,onSaved}:{branchId:string;s:Staff;on
     if(!nm.trim())return setErr('Нэр оруулна уу');
     if(pin&&pin.length<4)return setErr('PIN дор хаяж 4 орон');
     setLoading(true);const d:any={name:nm.trim(),role:rl};if(pin)d.pin=pin;
-    await updateStaff(branchId,s.id,d);await logActivity(branchId,'Менежер','Ажилтан засагдлаа',`${nm} (${rl})`);
+    await updateStaff(branchId,s.id,d);logAct('Ажилтан засагдлаа',`${nm} (${rl})`);
     setLoading(false);onSaved();onClose();
   };
   return(
@@ -1103,7 +1112,7 @@ function StaffEditModal({branchId,s,onClose,onSaved}:{branchId:string;s:Staff;on
   );
 }
 
-function SettingsTab({branchId,tables,managerName,onManagerNameChange}:{branchId:string;tables:Table[];managerName?:string;onManagerNameChange?:(n:string)=>void}) {
+function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:{branchId:string;tables:Table[];managerName?:string;onManagerNameChange?:(n:string)=>void;onLogAct?:(a:string,d?:string)=>void}) {
   const [top,setTop]=useState('МЕНЮ');
   const [bot,setBot]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
   const [qs,setQs]=useState(DEF_Q);
@@ -1150,7 +1159,7 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange}:{branchId
         <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.6rem'}}>🪑 ШИРЭЭНИЙ ТОО</p>
         <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.875rem'}}>
           <input type="number" value={tc} onChange={e=>setTc(e.target.value)} min="1" max="200" style={{...IS,flex:1,width:'auto'}}/>
-          <button onClick={async()=>{const n=parseInt(tc);if(!n)return;await setTablesDB(branchId,n);await logActivity(branchId,'Менежер',`Ширээний тоо ${n} болгон өөрчиллоо`);}} style={{padding:'0.65rem 1.25rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.875rem'}}>Хадгалах</button>
+          <button onClick={async()=>{const n=parseInt(tc);if(!n)return;await setTablesDB(branchId,n);onLogAct?.(`Ширээний тоо ${n} болгон өөрчиллоо`);}} style={{padding:'0.65rem 1.25rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.875rem'}}>Хадгалах</button>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:'0.5rem'}}>
           {tables.map(t=><div key={t.id} style={{background:C.inpBg,borderRadius:'8px',padding:'0.5rem 0.75rem',border:`1px solid ${t.status==='occupied'?`${C.red}44`:`${C.green}33`}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1287,10 +1296,11 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     const u5=subscribeToLogs(branchId,setLogs);
     const u6=subscribeToCategories(branchId,setCats);
     const u7=subscribeToStaff(branchId,setStaffList);
+    let cancelled=false;
     let u8:()=>void=()=>{};
     if(isManager&&mgrLicKey){
-      // Check if this is the main branch by comparing with license record
       getLicense(mgrLicKey).then(lic=>{
+        if(cancelled)return;
         const isMain=!lic?.branchId||lic.branchId===branchId;
         setIsMainBranch(isMain);
         if(isMain){
@@ -1300,7 +1310,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
         }
       });
     }
-    return()=>{u1();u2();u3();u4();u5();u6();u7();u8();};
+    return()=>{cancelled=true;u1();u2();u3();u4();u5();u6();u7();u8();};
   },[branchId]);
 
   // Subscribe to sibling branches' real-time data (only for main branch manager)
@@ -1353,11 +1363,11 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
   const oAvg=fsv.length?+(fsv.reduce((s,x)=>s+x.csat,0)/fsv.length).toFixed(1):0;
   const avg=(k:string)=>fsv.length?+(fsv.reduce((s,x)=>s+(x as any)[k]||0,0)/fsv.length).toFixed(1):0;
 
-  const hasMultiBranch=isManager&&siblingBranches.length>0;
+  const hasMultiBranch=isMulti; // зөвхөн үндсэн салбарын менежер
 
   // Active branch name label for display
   const gbfLabel=gbf==='all'?'Бүгд':allBranchOpts.find(b=>b.id===gbf)?.name||'';
-  // Which branchId to use for actions (add/edit staff, menu etc.)
+  // Which branchId to use for actions
   const activeBranchId=gbf==='all'||gbf===branchId?branchId:gbf;
 
   const NAV=[
@@ -1568,7 +1578,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 </button>
               ))}
             </div>}
-            <MenuTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} menuItems={menuItems} cats={cats} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||'',isSpecial:!!(item as any).isSpecial,discountPercent:String((item as any).discountPercent||'')})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:'',isSpecial:false,discountPercent:''})} logAct={(a,d)=>logAct(a,d)}/>
+            <MenuTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||'',isSpecial:!!(item as any).isSpecial,discountPercent:String((item as any).discountPercent||'')})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:'',isSpecial:false,discountPercent:''})} logAct={(a,d)=>logAct(a,d)}/>
           </>}
 
           {tab==='categories'&&<>
@@ -1581,7 +1591,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 </button>
               ))}
             </div>}
-            <CatTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} cats={cats} logAct={(a,d)=>logAct(a,d)}/>
+            <CatTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} logAct={(a,d)=>logAct(a,d)}/>
           </>}
 
           {tab==='orders'&&<OrdersKitchenView orders={effectiveOrders} branchId={activeBranchId} showBranchName={isMulti&&gbf==='all'} branchNames={Object.fromEntries(allBranchOpts.map(b=>[b.id,b.name]))} currentBranchId={branchId}/>}
@@ -1637,13 +1647,13 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             {!effectiveStaff.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
           </>}
 
-          {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName}/>}
+          {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)}/>}
           {tab==='logs'&&<LogsTab logs={logs} sibLogs={sibLogs} siblingBranches={siblingBranches} branchId={branchId} bName={bName} isMulti={isMulti}/>}
         </>}
         </div>
       </div>
-      {menuModal&&<MenuModal branchId={branchId} init={menuModal} cats={cats} onClose={()=>setMenuModal(null)}/>}
-      {editStaff&&<StaffEditModal branchId={branchId} s={editStaff} onClose={()=>setEditStaff(null)} onSaved={()=>{}}/>}
+      {menuModal&&<MenuModal branchId={activeBranchId} init={menuModal} cats={cats} onClose={()=>setMenuModal(null)} logAct={(a,d)=>logAct(a,d)}/>}
+      {editStaff&&<StaffEditModal branchId={branchId} s={editStaff} onClose={()=>setEditStaff(null)} onSaved={()=>{}} logAct={(a,d)=>logAct(a,d)}/>}
       {delTarget&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
         <div style={{background:C.card,borderRadius:'20px',padding:'1.5rem',maxWidth:'300px',width:'100%',textAlign:'center' as const,border:`1px solid ${C.border}`}}>
           <div style={{fontSize:'2.5rem',marginBottom:'0.75rem'}}>🗑️</div>
