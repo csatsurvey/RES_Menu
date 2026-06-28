@@ -57,13 +57,13 @@ function CSelect({value,onChange,options,placeholder,style}:{value:string;onChan
   const ref=useRef<HTMLDivElement>(null);
   useEffect(()=>{const h=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false);};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);},[]);
   const sel=options.find(o=>o.value===value);
-  return <div ref={ref} style={{position:'relative',...style}}>
-    <div onClick={()=>setOpen(!open)} style={{padding:'0.65rem 0.875rem',background:'#1e1e2c',border:`1px solid ${open?C.yellow:C.border}`,borderRadius:'8px',cursor:'pointer',color:value?'#fff':'rgba(255,255,255,0.4)',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.875rem',userSelect:'none' as const,colorScheme:'dark' as any}}>
-      <span>{sel?sel.label:placeholder}</span>
-      <span style={{color:C.muted,fontSize:'0.65rem',display:'inline-block',transform:open?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▼</span>
+  return <div ref={ref} style={{position:'relative',width:'100%',boxSizing:'border-box' as const,...style}}>
+    <div onClick={()=>setOpen(!open)} style={{padding:'0.65rem 0.875rem',background:'#1e1e2c',border:`1px solid ${open?C.yellow:C.border}`,borderRadius:'8px',cursor:'pointer',color:value?'#fff':'rgba(255,255,255,0.4)',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.875rem',userSelect:'none' as const,colorScheme:'dark' as any,boxSizing:'border-box' as const,width:'100%'}}>
+      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const,flex:1,minWidth:0}}>{sel?sel.label:placeholder}</span>
+      <span style={{color:C.muted,fontSize:'0.65rem',display:'inline-block',transform:open?'rotate(180deg)':'none',transition:'transform 0.2s',flexShrink:0,marginLeft:'0.5rem'}}>▼</span>
     </div>
-    {open&&<div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#1e1e2c',border:`1px solid ${C.yellow}44`,borderRadius:'8px',zIndex:9999,overflow:'hidden',boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}>
-      {options.map(opt=><div key={opt.value} onClick={()=>{onChange(opt.value);setOpen(false);}} style={{padding:'0.65rem 0.875rem',cursor:'pointer',color:opt.value===value?C.yellow:'rgba(255,255,255,0.85)',background:opt.value===value?`${C.yellow}18`:'transparent',fontSize:'0.875rem',borderBottom:'1px solid rgba(255,255,255,0.04)'}} onMouseOver={e=>{if(opt.value!==value)e.currentTarget.style.background='rgba(255,255,255,0.06)';}} onMouseOut={e=>{e.currentTarget.style.background=opt.value===value?`${C.yellow}18`:'transparent';}}>{opt.label}</div>)}
+    {open&&<div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#1e1e2c',border:`1px solid ${C.yellow}44`,borderRadius:'8px',zIndex:9999,overflow:'hidden',boxShadow:'0 8px 24px rgba(0,0,0,0.5)',maxHeight:'200px',overflowY:'auto' as const}}>
+      {options.map(opt=><div key={opt.value} onClick={()=>{onChange(opt.value);setOpen(false);}} style={{padding:'0.65rem 0.875rem',cursor:'pointer',color:opt.value===value?C.yellow:'rgba(255,255,255,0.85)',background:opt.value===value?`${C.yellow}18`:'transparent',fontSize:'0.875rem',borderBottom:'1px solid rgba(255,255,255,0.04)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}} onMouseOver={e=>{if(opt.value!==value)e.currentTarget.style.background='rgba(255,255,255,0.06)';}} onMouseOut={e=>{e.currentTarget.style.background=opt.value===value?`${C.yellow}18`:'transparent';}}>{opt.label}</div>)}
     </div>}
   </div>;
 }
