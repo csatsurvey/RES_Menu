@@ -833,6 +833,19 @@ export const getBranchLicenseStatus = async (branchId: string): Promise<LicenseC
   return checkLicenseStatus(lic);
 };
 
+// Real-time license monitoring — дуусах хугацаа болоход тэр дороо мэдэгдэнэ
+export const subscribeToLicense = (
+  licenseKey: string,
+  callback: (check: LicenseCheck) => void
+): (() => void) => {
+  const r = ref(db, `licenses/${licenseKey}`);
+  const h = onValue(r, (snap) => {
+    const lic = snap.exists() ? { key: licenseKey, ...snap.val() } as License : null;
+    callback(checkLicenseStatus(lic));
+  });
+  return () => off(r, 'value', h);
+};
+
 export const setBranchLicense = async (branchId: string, licenseKey: string): Promise<void> => {
   await update(ref(db, `branches/${branchId}`), { licenseKey });
   await update(ref(db, `licenses/${licenseKey}`), { branchId });
