@@ -1128,13 +1128,29 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
 }
 
 function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any;cats:Category[];onClose:()=>void;logAct:(a:string,d:string)=>void}) {
-  const [form,setForm]=useState(init);
+  const mkForm=(src:any)=>({
+    id:src.id||'',
+    name:src.name||'',
+    description:src.description||'',
+    price:src.price||'',
+    category:src.category||'',
+    image:src.image||'',
+    available:src.available!==false,
+    allergens:src.allergens||'',
+    isSpecial:!!src.isSpecial,
+    discountPercent:src.discountPercent||'',
+    code:src.code||'',
+    servings:src.servings||'',
+    nameEn:src.nameEn||'',
+    nameZh:src.nameZh||'',
+    nameKo:src.nameKo||'',
+  });
+  const [form,setForm]=useState(()=>mkForm(init));
   const [prev,setPrev]=useState(init.image||'');
   const [upl,setUpl]=useState(false);
   const [err,setErr]=useState('');
   const fRef=useRef<HTMLInputElement>(null);
-  // init.id өөрчлөгдөхөд (өөр item edit хийхэд) form шинэчлэгдэнэ
-  useEffect(()=>{setForm(init);setPrev(init.image||'');},[init.id]);
+  useEffect(()=>{const f=mkForm(init);setForm(f);setPrev(init.image||'');},[init.id]);
   const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];
     if(!file)return;
