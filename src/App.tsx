@@ -15,6 +15,7 @@ import {
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License, subscribeToLicense,
   getSalesReport, Location, subscribeToLocations, saveLocation, deleteLocation,
+  addManagerPin, removeManagerPin, getManagerPins,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
@@ -546,7 +547,7 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   const [lightbox,setLightbox]=useState<string|null>(null);
   const [orderSuccess,setOrderSuccess]=useState(false);
   const [dataLoaded,setDataLoaded]=useState(false);
-  const [langs,setLangs]=useState({mn:true,en:false,zh:false,ko:false});
+  const [langs,setLangs]=useState({mn:true,en:true,zh:true,ko:false});
   const [locations,setLocations]=useState<Location[]>([]);
 
   useEffect(()=>{
@@ -807,10 +808,10 @@ function OrdersKitchenView({orders,branchId,showBranchName,branchNames,currentBr
   const [df,setDf]=useState<'today'|'all'>('today');
   const ts=new Date();ts.setHours(0,0,0,0);
   const todayOrders=df==='today'?orders.filter(o=>o.createdAt>=ts.getTime()):orders;
-  const active=todayOrders.filter(o=>o.status!=='served'&&o.status!=='billed'&&o.status!=='cancelled').sort((a,b)=>a.createdAt-b.createdAt);
-  const served=todayOrders.filter(o=>o.status==='served'||o.status==='billed').sort((a,b)=>b.updatedAt-a.updatedAt);
+  const active=todayOrders.filter(o=>o.status!=='billed'&&o.status!=='cancelled').sort((a,b)=>a.createdAt-b.createdAt);
+  const served=todayOrders.filter(o=>o.status==='billed').sort((a,b)=>b.updatedAt-a.updatedAt);
   const filtered=sf==='served'?served:sf==='all'?active:active.filter(o=>o.status===sf);
-  const cnt={pending:active.filter(o=>o.status==='pending').length,preparing:active.filter(o=>o.status==='preparing').length,ready:active.filter(o=>o.status==='ready').length};
+  const cnt={pending:active.filter(o=>o.status==='pending').length,preparing:active.filter(o=>o.status==='preparing').length,ready:active.filter(o=>o.status==='ready').length,served:active.filter(o=>o.status==='served').length};
   return(
     <div>
       <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.75rem',flexWrap:'wrap' as const,alignItems:'center'}}>
@@ -821,7 +822,7 @@ function OrdersKitchenView({orders,branchId,showBranchName,branchNames,currentBr
         </button>
       </div>
       {sf!=='served'&&<div style={{display:'flex',gap:'0.4rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
-        {[{k:'all',l:`📋 Бүгд (${active.length})`,c:C.yellow},{k:'pending',l:`🟡 Хүлээж (${cnt.pending})`,c:'#F59E0B'},{k:'preparing',l:`🔵 Бэлтгэж (${cnt.preparing})`,c:'#3B82F6'},{k:'ready',l:`🟢 Бэлэн (${cnt.ready})`,c:'#10B981'}].map(t=><button key={t.k} onClick={()=>setSf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf===t.k?t.c:C.border}`,background:sf===t.k?`${t.c}22`:'transparent',color:sf===t.k?t.c:C.muted,fontWeight:sf===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem',whiteSpace:'nowrap' as const}}>{t.l}</button>)}
+        {[{k:'all',l:`📋 Бүгд (${active.length})`,c:C.yellow},{k:'pending',l:`🟡 Хүлээж (${cnt.pending})`,c:'#F59E0B'},{k:'preparing',l:`🔵 Бэлтгэж (${cnt.preparing})`,c:'#3B82F6'},{k:'ready',l:`🟢 Бэлэн (${cnt.ready})`,c:'#10B981'},{k:'served',l:`🟣 Хүргэгдсэн (${cnt.served})`,c:'#8B5CF6'}].map(t=><button key={t.k} onClick={()=>setSf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf===t.k?t.c:C.border}`,background:sf===t.k?`${t.c}22`:'transparent',color:sf===t.k?t.c:C.muted,fontWeight:sf===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem',whiteSpace:'nowrap' as const}}>{t.l}</button>)}
       </div>}
       {sf==='served'&&<div style={{background:'rgba(107,114,128,0.12)',borderRadius:'10px',padding:'0.6rem 1rem',marginBottom:'1rem',border:'1px solid rgba(107,114,128,0.25)'}}>
         <p style={{color:'#9CA3AF',fontSize:'0.78rem',margin:0}}>📦 Хүргэгдсэн захиалгын архив — {served.length} захиалга</p>
@@ -1403,28 +1404,48 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
 
 
 function PinChanger({branchId}:{branchId:string}) {
-  const [pin,setPin]=useState('');
-  const [pin2,setPin2]=useState('');
+  const [pins,setPins]=useState<string[]>([]);
+  const [newPin,setNewPin]=useState('');
+  const [newPin2,setNewPin2]=useState('');
   const [msg,setMsg]=useState('');
   const [err,setErr]=useState('');
-  const save=async()=>{
+  useEffect(()=>{getManagerPins(branchId).then(setPins);},[branchId]);
+  const add=async()=>{
     setMsg('');setErr('');
-    if(pin.length<4)return setErr('PIN 4-с дээш тоо байх ёстой');
-    if(pin!==pin2)return setErr('PIN давтлага таарахгүй байна');
-    await updateBranch(branchId,{managerPin:pin});
-    setPin('');setPin2('');
-    setMsg('✅ PIN амжилттай солигдлоо');
-    setTimeout(()=>setMsg(''),3000);
+    if(newPin.length<4)return setErr('PIN 4-с дээш тоо байх ёстой');
+    if(newPin!==newPin2)return setErr('PIN давтлага таарахгүй');
+    if(pins.includes(newPin))return setErr('Энэ PIN аль хэдийн байна');
+    await addManagerPin(branchId,newPin);
+    setPins(p=>[...p,newPin]);
+    setNewPin('');setNewPin2('');
+    setMsg('✅ PIN нэмэгдлээ');setTimeout(()=>setMsg(''),2000);
+  };
+  const del=async(pin:string)=>{
+    if(pins.length<=1)return setErr('Дор хаяж 1 PIN байх ёстой');
+    await removeManagerPin(branchId,pin);
+    setPins(p=>p.filter(x=>x!==pin));
   };
   return(
     <div style={{...CS,marginTop:'1rem'}}>
-      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>🔐 МЕНЕЖЕРИЙН PIN СОЛИХ</p>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>🔐 МЕНЕЖЕРИЙН PIN УДИРДЛАГА</p>
+      {/* Одоогийн PIN-үүд */}
+      {pins.length>0&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.4rem',marginBottom:'0.875rem'}}>
+        <p style={{color:C.muted,fontSize:'0.72rem',margin:'0 0 0.35rem'}}>Одоогийн PIN-үүд:</p>
+        {pins.map((pin,i)=>(
+          <div key={pin} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.5rem 0.875rem',background:C.inpBg,borderRadius:'8px',border:`1px solid ${C.border}`}}>
+            <span style={{color:C.text,fontWeight:'700',fontSize:'0.875rem'}}>Менежер {i+1}: {'•'.repeat(pin.length)}</span>
+            {pins.length>1&&<button onClick={()=>del(pin)} style={{padding:'0.25rem 0.6rem',background:`${C.red}22`,border:'none',borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.75rem'}}>Устгах</button>}
+          </div>
+        ))}
+      </div>}
+      {/* Шинэ PIN нэмэх */}
       <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
-        <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="Шинэ PIN (4+ тоо)" style={IS} maxLength={8}/>
-        <input value={pin2} onChange={e=>setPin2(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN давтах" style={IS} maxLength={8}/>
+        <p style={{color:C.muted,fontSize:'0.72rem',margin:0}}>Шинэ менежер PIN нэмэх:</p>
+        <input value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="Шинэ PIN (4+ тоо)" style={IS} maxLength={8}/>
+        <input value={newPin2} onChange={e=>setNewPin2(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN давтах" style={IS} maxLength={8}/>
         {err&&<p style={{color:C.red,fontSize:'0.78rem',margin:0}}>{err}</p>}
         {msg&&<p style={{color:C.green,fontSize:'0.78rem',margin:0}}>{msg}</p>}
-        <button onClick={save} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>PIN солих</button>
+        <button onClick={add} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>+ PIN нэмэх</button>
       </div>
     </div>
   );
