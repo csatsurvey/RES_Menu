@@ -15,7 +15,7 @@ import {
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License, subscribeToLicense,
   getSalesReport, getOrdersInRange, Location, subscribeToLocations, saveLocation, deleteLocation,
-  addManagerPin, removeManagerPin, getManagerPins,
+  addManagerPin, removeManagerPin, getManagerPins, verifyPinSaved,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
@@ -1560,19 +1560,16 @@ function StaffPinChanger({branchId,allBranchIds}:{branchId:string;allBranchIds:s
     try{
       const bid=(s as any)._bid||branchId;
       const sid=s.id;
-      // update() биш set() ашиглан PIN шууд тохируулна
-      const r=await fetch(
-        `https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app/branches/${bid}/staff/${sid}/pin.json`,
-        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(pin)}
-      );
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const saved=await r.json();
-      if(saved!==pin)throw new Error('PIN баталгаажаагүй: '+saved);
+      // PIN шууд set() хийнэ
+      await updateStaff(bid,sid,{pin});
+      // Баталгаажуулалт — Firebase-с дахин уншина
+      const ok=await verifyPinSaved(bid,sid,pin);
+      if(!ok)throw new Error('Firebase-д PIN хадгалагдаагүй байна. Дахин оролдоно уу.');
       setPin('');setPin2('');setSel('');
-      setMsg(`✅ ${s.name}-н PIN: ${pin} болгон солигдлоо`);
+      setMsg(`✅ ${s.name}-н PIN амжилттай солигдлоо`);
       setTimeout(()=>setMsg(''),4000);
     }catch(e){
-      setErr('❌ Хадгалах алдаа: '+String(e));
+      setErr('❌ '+String(e));
     }
   };
   return(
