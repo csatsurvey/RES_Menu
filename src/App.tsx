@@ -14,14 +14,14 @@ import {
   getSettings, saveSettings, saveSurveyQuestions, subscribeToSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License, subscribeToLicense,
-  getSalesReport,
+  getSalesReport, Location, subscribeToLocations, saveLocation, deleteLocation,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
 } from './lib/db';
 
 type SalesData = { totalRevenue:number; orderCount:number; avgOrder:number; products:{name:string;qty:number;revenue:number}[]; dailyRevenue:{date:string;revenue:number}[] };
 type AdminTab = 'dashboard'|'complaints'|'menu'|'categories'|'staff'|'orders'|'settings'|'sales'|'logs'|'multibranch';
-type KFilter = 'all'|'pending'|'preparing'|'ready'|'served';
+type KFilter = 'all'|'pending'|'preparing'|'ready'|'served'|'billed';
 type CartItem = { item:MenuItem; qty:number };
 
 const C = { bg:'#0d0d12', sidebar:'#111117', card:'#1a1a22', border:'rgba(255,255,255,0.08)', yellow:'#F5C120', orange:'#E87B2F', green:'#2ECC71', red:'#E74C3C', text:'#ffffff', muted:'rgba(255,255,255,0.5)', inpBg:'rgba(255,255,255,0.06)' };
@@ -539,13 +539,16 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   const [showSurvey,setShowSurvey]=useState(false);
   const [showCart,setShowCart]=useState(false);
   const [showTrack,setShowTrack]=useState(false);
+  const [showLocs,setShowLocs]=useState(false);
   const [bName,setBName]=useState('');
   const [notes,setNotes]=useState('');
   const [loading,setLoading]=useState(false);
   const [lightbox,setLightbox]=useState<string|null>(null);
   const [orderSuccess,setOrderSuccess]=useState(false);
-
   const [dataLoaded,setDataLoaded]=useState(false);
+  const [langs,setLangs]=useState({mn:true,en:false,zh:false,ko:false});
+  const [curLang,setCurLang]=useState<'mn'|'en'|'zh'|'ko'>('mn');
+  const [locations,setLocations]=useState<Location[]>([]);
 
   useEffect(()=>{
     if(!branchId)return;
@@ -555,7 +558,9 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
     const u1=subscribeToMenu(branchId,it=>{setItems(it.filter(i=>i.available));itemsLoaded=true;trySetLoaded();});
     const u2=subscribeToTableOrders(branchId,tableNum,setOrders);
     const u3=subscribeToCategories(branchId,c=>{setCats(c.filter(x=>x.visible));catsLoaded=true;trySetLoaded();});
-    return()=>{u1();u2();u3();};
+    const u4=subscribeToLocations(branchId,setLocations);
+    getSettings(branchId).then(s=>{if((s as any).languages)setLangs({mn:true,...(s as any).languages});});
+    return()=>{u1();u2();u3();u4();};
   },[branchId,tableNum]);
 
   const mCats=[...new Set(items.map(i=>i.category))];
@@ -604,17 +609,32 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
         </div>
       </div>
       <div style={{textAlign:'center',padding:'1.25rem 1rem 0.75rem'}}><h2 style={{fontFamily:'Georgia,serif',fontSize:'2rem',fontStyle:'italic',color:C.yellow,margin:0,fontWeight:'400'}}>Меню</h2></div>
+      {/* Хэл сонголт + Байршил */}
+      <div style={{padding:'0 1rem 0.5rem',display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap' as const}}>
+        {Object.entries(langs).filter(([,v])=>v).map(([k])=>{
+          const LN:Record<string,string>={mn:'🇲🇳MN',en:'🇺🇸EN',zh:'🇨🇳ZH',ko:'🇰🇷KO'};
+          return <button key={k} onClick={()=>setCurLang(k as any)} style={{padding:'0.25rem 0.65rem',borderRadius:'20px',border:`1px solid ${curLang===k?C.yellow:C.border}`,background:curLang===k?`${C.yellow}22`:'transparent',color:curLang===k?C.yellow:C.muted,fontWeight:'700',cursor:'pointer',fontSize:'0.72rem'}}>{LN[k]}</button>;
+        })}
+        {locations.filter(l=>l.active).length>0&&<button onClick={()=>setShowLocs(true)} style={{marginLeft:'auto',padding:'0.25rem 0.75rem',borderRadius:'20px',border:`1px solid ${C.border}`,background:'transparent',color:C.muted,cursor:'pointer',fontSize:'0.72rem'}}>📍 Байршил</button>}
+      </div>
       <div style={{padding:'0 1rem 0.75rem',display:'flex',gap:'0.4rem',overflowX:'auto'}}>
         {visCats.map(cat=><button key={cat} onClick={()=>setActiveCat(cat)} style={{padding:'0.4rem 1rem',borderRadius:'6px',border:`1.5px solid ${activeCat===cat?C.orange:C.border}`,cursor:'pointer',whiteSpace:'nowrap',fontWeight:'700',fontSize:'0.78rem',textTransform:'uppercase' as const,background:activeCat===cat?C.orange:'transparent',color:activeCat===cat?'white':C.muted,transition:'all 0.15s'}}>{cat}</button>)}
       </div>
       <div style={{padding:'0 1rem',maxWidth:'720px',margin:'0 auto'}}>
         {items.filter(i=>i.category===activeCat).map(item=>{
           const q=qty(item.id);
+          const dispName=curLang==='en'&&(item as any).nameEn?(item as any).nameEn:curLang==='zh'&&(item as any).nameZh?(item as any).nameZh:curLang==='ko'&&(item as any).nameKo?(item as any).nameKo:item.name;
           return(
             <div key={item.id} style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,marginBottom:'0.75rem'}}>
               <div style={{padding:'1rem'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.3rem'}}>
-                  <h3 style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0,flex:1,paddingRight:'0.75rem',lineHeight:1.3}}>{item.name}</h3>
+                  <div style={{flex:1,paddingRight:'0.75rem'}}>
+                    <h3 style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0,lineHeight:1.3}}>{dispName}</h3>
+                    <div style={{display:'flex',gap:'0.4rem',marginTop:'0.25rem',flexWrap:'wrap' as const}}>
+                      {(item as any).code&&<span style={{fontSize:'0.65rem',background:`${C.orange}22`,color:C.orange,padding:'0.05rem 0.4rem',borderRadius:'4px',fontWeight:'700'}}>#{(item as any).code}</span>}
+                      {(item as any).servings>0&&<span style={{fontSize:'0.65rem',background:`${C.green}18`,color:C.green,padding:'0.05rem 0.4rem',borderRadius:'4px'}}>👥{(item as any).servings}хүн</span>}
+                    </div>
+                  </div>
                   <span style={{color:C.yellow,fontWeight:'800',fontSize:'0.95rem',flexShrink:0}}>
                     {(item as any).discountPercent>0
                       ?<><span style={{textDecoration:'line-through',color:C.muted,fontSize:'0.78rem',marginRight:'0.25rem'}}>₮{item.price.toLocaleString('mn-MN')}</span>₮{Math.round(item.price*(1-(item as any).discountPercent/100)).toLocaleString('mn-MN')}</>
@@ -643,6 +663,25 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
         })}
         {!items.filter(i=>i.category===activeCat).length&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>🍽️</div><p>Хоол байхгүй</p></div>}
       </div>
+
+      {/* Байршил modal */}
+      {showLocs&&<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.85)',zIndex:1000,display:'flex',alignItems:'flex-end'}} onClick={()=>setShowLocs(false)}>
+        <div style={{background:C.card,width:'100%',borderRadius:'20px 20px 0 0',padding:'1.5rem 1.25rem',maxHeight:'70vh',overflowY:'auto' as const}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+            <h3 style={{margin:0,color:C.text,fontWeight:'800',fontSize:'1.1rem'}}>📍 Байршлын мэдээлэл</h3>
+            <button onClick={()=>setShowLocs(false)} style={{background:'transparent',border:'none',color:C.muted,fontSize:'1.5rem',cursor:'pointer',lineHeight:1}}>×</button>
+          </div>
+          {locations.filter(l=>l.active).map(loc=>(
+            <div key={loc.id} style={{display:'flex',gap:'1rem',padding:'1rem',background:C.inpBg,borderRadius:'12px',border:`1px solid ${C.border}`,marginBottom:'0.75rem'}}>
+              {loc.image&&<img src={loc.image} style={{width:'72px',height:'72px',objectFit:'cover',borderRadius:'10px',flexShrink:0}}/>}
+              <div>
+                <p style={{margin:0,fontWeight:'800',color:C.text,fontSize:'1rem'}}>{loc.name}</p>
+                {loc.address&&<p style={{margin:'4px 0 0',color:C.muted,fontSize:'0.82rem',lineHeight:1.5}}>{loc.address}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,background:C.sidebar,borderTop:`1px solid ${C.border}`,padding:'0.75rem 1rem',display:'flex',gap:'0.75rem',zIndex:30}}>
         <button onClick={()=>setShowSurvey(true)} style={{flex:1,padding:'0.75rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'12px',color:C.yellow,cursor:'pointer',fontWeight:'700',fontSize:'0.82rem'}}>⭐ Үнэлгээ өгөх</button>
         <button onClick={()=>setShowCart(true)} disabled={cnt===0} style={{flex:2,padding:'0.75rem',background:cnt>0?C.orange:C.inpBg,border:'none',borderRadius:'12px',color:cnt>0?'white':C.muted,cursor:'pointer',fontWeight:'800',fontSize:'0.875rem'}}>
@@ -709,10 +748,12 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
 }
 
 function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel?:string}) {
-  const NEXT:Partial<Record<Order['status'],Order['status']>>={pending:'preparing',preparing:'ready',ready:'served'};
-  const NL:Partial<Record<Order['status'],string>>={pending:'👨‍🍳 Бэлтгэж эхлэх',preparing:'📢 Бэлэн болгох',ready:'🛎️ Хүргэсэн тэмдэглэх'};
-  const NC:Partial<Record<Order['status'],string>>={pending:'#3B82F6',preparing:'#10B981',ready:'#8B5CF6'};
+  const NEXT:Partial<Record<Order['status'],Order['status']>>={pending:'preparing',preparing:'ready',ready:'served',served:'billed'};
+  const NL:Partial<Record<Order['status'],string>>={pending:'👨‍🍳 Бэлтгэж эхлэх',preparing:'📢 Бэлэн болгох',ready:'🛎️ Хүргэсэн тэмдэглэх',served:'💳 Борлуулалтаар бүртгэх'};
+  const NC:Partial<Record<Order['status'],string>>={pending:'#3B82F6',preparing:'#10B981',ready:'#8B5CF6',served:'#8B5CF6'};
   const el=Math.floor((Date.now()-o.createdAt)/60000);
+  const totalQty=o.items.reduce((s,i)=>s+i.quantity,0);
+  const totalAmt=o.items.reduce((s,i)=>s+i.price*i.quantity,0);
   return(
     <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
       <div style={{padding:'0.875rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:`1px solid ${C.border}`}}>
@@ -722,6 +763,10 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
             {(o as any).orderNumber&&<span style={{fontSize:'0.9rem',fontWeight:'800',color:C.yellow,background:`${C.yellow}18`,padding:'0.1rem 0.5rem',borderRadius:'8px'}}>{(o as any).orderNumber}</span>}
           </div>
           {branchLabel&&<div style={{fontSize:'0.65rem',color:C.orange,fontWeight:'700',marginTop:'0.1rem'}}>📍 {branchLabel}</div>}
+          <div style={{display:'flex',gap:'0.75rem',marginTop:'0.3rem'}}>
+            <span style={{fontSize:'0.75rem',color:C.muted}}>🍽️ <b style={{color:C.text}}>{totalQty}</b> ширхэг</span>
+            <span style={{fontSize:'0.75rem',color:C.green,fontWeight:'700'}}>{formatPrice(totalAmt)}</span>
+          </div>
         </div>
         <div style={{textAlign:'right' as const}}>
           <div style={{fontSize:'0.72rem',padding:'0.25rem 0.65rem',borderRadius:'20px',fontWeight:'700',background:ORDER_STATUS_COLORS[o.status]+'22',color:ORDER_STATUS_COLORS[o.status],marginBottom:'0.2rem'}}>{ORDER_STATUS_LABELS[o.status]}</div>
@@ -732,19 +777,22 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
         {o.items.map((item,i)=>(
           <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'0.3rem 0',borderBottom:i<o.items.length-1?'1px dashed rgba(255,255,255,0.05)':'none'}}>
             <span style={{fontWeight:'700',color:'rgba(255,255,255,0.9)',fontSize:'0.9rem'}}>{item.name}</span>
-            <span style={{background:'rgba(255,255,255,0.1)',borderRadius:'20px',padding:'0.1rem 0.6rem',fontWeight:'800',color:C.text,fontSize:'0.82rem'}}>×{item.quantity}</span>
+            <div style={{display:'flex',gap:'0.75rem',alignItems:'center'}}>
+              <span style={{fontSize:'0.78rem',color:C.muted}}>{formatPrice(item.price*item.quantity)}</span>
+              <span style={{background:'rgba(255,255,255,0.1)',borderRadius:'20px',padding:'0.1rem 0.6rem',fontWeight:'800',color:C.text,fontSize:'0.82rem'}}>×{item.quantity}</span>
+            </div>
           </div>
         ))}
         {o.notes&&<div style={{marginTop:'0.6rem',background:`${C.yellow}11`,border:`1px solid ${C.yellow}33`,borderRadius:'8px',padding:'0.4rem 0.65rem'}}><p style={{margin:0,fontSize:'0.82rem',color:C.yellow,fontWeight:'600'}}>📝 {o.notes}</p></div>}
       </div>
-      {NEXT[o.status]&&<div style={{padding:'0 1rem 0.75rem',display:'flex',gap:'0.5rem'}}>
+      {NEXT[o.status]&&o.status!=='billed'&&<div style={{padding:'0 1rem 0.75rem',display:'flex',gap:'0.5rem'}}>
         <button onClick={async()=>{await updateOrderStatus(branchId,o.id,NEXT[o.status]!);await logActivity(branchId,'Ажилтан',`Захиалгын төлөв`,`Ширээ ${o.tableNumber}: ${NL[o.status]}`);}}
           style={{flex:1,padding:'0.8rem',background:NC[o.status],color:'white',border:'none',borderRadius:'10px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',touchAction:'manipulation' as const}}>
           {NL[o.status]}
         </button>
         {['pending','preparing'].includes(o.status)&&<button onClick={async()=>{
           if(!confirm(`Ширээ ${o.tableNumber}-н захиалгыг цуцлах уу?`))return;
-          await updateOrderStatus(branchId,o.id,'served');
+          await updateOrderStatus(branchId,o.id,'cancelled');
           await logActivity(branchId,'Ажилтан','Захиалга цуцлагдлаа',`Ширээ ${o.tableNumber}`);
         }} style={{padding:'0.8rem 0.875rem',background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'10px',color:C.red,cursor:'pointer',fontWeight:'700',fontSize:'0.82rem',touchAction:'manipulation' as const}}>
           ❌
@@ -759,8 +807,8 @@ function OrdersKitchenView({orders,branchId,showBranchName,branchNames,currentBr
   const [df,setDf]=useState<'today'|'all'>('today');
   const ts=new Date();ts.setHours(0,0,0,0);
   const todayOrders=df==='today'?orders.filter(o=>o.createdAt>=ts.getTime()):orders;
-  const active=todayOrders.filter(o=>o.status!=='served').sort((a,b)=>a.createdAt-b.createdAt);
-  const served=todayOrders.filter(o=>o.status==='served').sort((a,b)=>b.updatedAt-a.updatedAt);
+  const active=todayOrders.filter(o=>o.status!=='served'&&o.status!=='billed'&&o.status!=='cancelled').sort((a,b)=>a.createdAt-b.createdAt);
+  const served=todayOrders.filter(o=>o.status==='served'||o.status==='billed').sort((a,b)=>b.updatedAt-a.updatedAt);
   const filtered=sf==='served'?served:sf==='all'?active:active.filter(o=>o.status===sf);
   const cnt={pending:active.filter(o=>o.status==='pending').length,preparing:active.filter(o=>o.status==='preparing').length,ready:active.filter(o=>o.status==='ready').length};
   return(
@@ -1322,10 +1370,97 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
       </div>
 
       <button onClick={saveAll} disabled={loading} style={{width:'100%',padding:'0.875rem',background:saved?C.green:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',transition:'background 0.2s'}}>{loading?'Хадгалж байна...':saved?'✅ Хадгалагдлаа!':'💾 Бүгдийг хадгалах'}</button>
+
+      {/* Хэлний тохиргоо */}
+      <LanguageSettings branchId={branchId}/>
+
+      {/* Байршил */}
+      <LocationsManager branchId={branchId}/>
     </div>
   );
 }
 
+
+function LanguageSettings({branchId}:{branchId:string}) {
+  const [langs,setLangs]=useState({mn:true,en:false,zh:false,ko:false});
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{getSettings(branchId).then(s=>{if((s as any).languages)setLangs({mn:true,...(s as any).languages});});},[branchId]);
+  const save=async()=>{await saveSettings(branchId,{languages:langs} as any);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const LANGS=[{k:'mn',l:'🇲🇳 Монгол',dis:true},{k:'en',l:'🇺🇸 Англи'},{k:'zh',l:'🇨🇳 Хятад'},{k:'ko',l:'🇰🇷 Солонгос'}];
+  return(
+    <div style={{...CS,marginTop:'1rem'}}>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>🌐 ХЭЛНИЙ ТОХИРГОО</p>
+      <p style={{color:C.muted,fontSize:'0.75rem',margin:'0 0 0.75rem'}}>Үйлчлүүлэгчид ямар хэлийг сонгох боломжтой байхыг тохируулна</p>
+      <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem',marginBottom:'0.875rem'}}>
+        {LANGS.map(({k,l,dis})=>(
+          <div key={k} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.6rem 0.875rem',background:C.inpBg,borderRadius:'10px',border:`1px solid ${C.border}`}}>
+            <span style={{color:C.text,fontSize:'0.875rem',fontWeight:'600'}}>{l}</span>
+            <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+              {dis&&<span style={{fontSize:'0.65rem',color:C.muted}}>Заавал</span>}
+              <Toggle on={(langs as any)[k]} onChange={v=>{if(k==='mn')return;setLangs(p=>({...p,[k]:v}));}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={save} style={{width:'100%',padding:'0.7rem',background:saved?C.green:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>{saved?'✅ Хадгалагдлаа':'Хадгалах'}</button>
+    </div>
+  );
+}
+
+function LocationsManager({branchId}:{branchId:string}) {
+  const [locs,setLocs]=useState<Location[]>([]);
+  const [form,setForm]=useState<any>({name:'',address:'',image:'',active:true});
+  const [edit,setEdit]=useState<string|null>(null);
+  const [upl,setUpl]=useState(false);
+  useEffect(()=>subscribeToLocations(branchId,setLocs),[branchId]);
+  const save=async()=>{
+    if(!form.name.trim())return;
+    await saveLocation(branchId,{name:form.name.trim(),address:form.address.trim(),image:form.image||'',active:form.active!==false},edit||undefined);
+    setForm({name:'',address:'',image:'',active:true});setEdit(null);
+  };
+  const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{
+    const file=e.target.files?.[0];if(!file)return;setUpl(true);
+    try{const b64=await compressImage(file,700,0.78);const blob=await fetch(b64).then(r=>r.blob());
+      const url=await uploadMenuImage(branchId,new File([blob],'loc.jpg',{type:'image/jpeg'}));
+      setForm((f:any)=>({...f,image:url}));}catch{}setUpl(false);
+  };
+  return(
+    <div style={{...CS,marginTop:'1rem'}}>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>📍 БАЙРШЛЫН УДИРДЛАГА</p>
+      <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem',marginBottom:'1rem'}}>
+        <input value={form.name} onChange={e=>setForm((f:any)=>({...f,name:e.target.value}))} placeholder="Байршлын нэр *" style={IS}/>
+        <input value={form.address} onChange={e=>setForm((f:any)=>({...f,address:e.target.value}))} placeholder="Хаяг, чиглэл" style={IS}/>
+        <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+          {form.image&&<img src={form.image} style={{width:'48px',height:'48px',objectFit:'cover',borderRadius:'8px',flexShrink:0}}/>}
+          <label style={{flex:1,padding:'0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'8px',cursor:'pointer',textAlign:'center' as const,fontSize:'0.8rem',color:C.muted}}>
+            {upl?'Uploading...':'📸 Зураг оруулах'}
+            <input type="file" accept="image/*" onChange={hFile} style={{display:'none'}}/>
+          </label>
+        </div>
+        <div style={{display:'flex',gap:'0.75rem'}}>
+          <button onClick={save} style={{flex:1,padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>{edit?'Засах':'+ Нэмэх'}</button>
+          {edit&&<button onClick={()=>{setEdit(null);setForm({name:'',address:'',image:'',active:true});}} style={{padding:'0.7rem 1rem',background:'transparent',border:`1px solid ${C.border}`,borderRadius:'8px',color:C.muted,cursor:'pointer',fontSize:'0.85rem'}}>Болих</button>}
+        </div>
+      </div>
+      {locs.length>0&&<div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
+        {locs.map(loc=>(
+          <div key={loc.id} style={{display:'flex',gap:'0.75rem',alignItems:'center',padding:'0.75rem',background:C.inpBg,borderRadius:'10px',border:`1px solid ${C.border}`,opacity:loc.active?1:0.5}}>
+            {loc.image&&<img src={loc.image} style={{width:'48px',height:'48px',objectFit:'cover',borderRadius:'8px',flexShrink:0}}/>}
+            <div style={{flex:1,minWidth:0}}>
+              <p style={{margin:0,fontWeight:'700',fontSize:'0.875rem',color:C.text}}>{loc.name}</p>
+              {loc.address&&<p style={{margin:'2px 0 0',fontSize:'0.72rem',color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{loc.address}</p>}
+            </div>
+            <div style={{display:'flex',gap:'0.4rem',flexShrink:0}}>
+              <Toggle on={loc.active} onChange={async v=>await saveLocation(branchId,{...loc,active:v},loc.id)}/>
+              <button onClick={()=>{setEdit(loc.id);setForm({name:loc.name,address:loc.address,image:loc.image,active:loc.active});}} style={{padding:'0.35rem 0.6rem',background:C.inpBg,border:`1px solid ${C.border}`,borderRadius:'6px',color:C.text,cursor:'pointer',fontSize:'0.8rem'}}>✏️</button>
+              <button onClick={async()=>{if(confirm('Устгах уу?'))await deleteLocation(branchId,loc.id);}} style={{padding:'0.35rem 0.6rem',background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:'6px',color:C.red,cursor:'pointer',fontSize:'0.8rem'}}>🗑</button>
+            </div>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+}
 
 function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;onLog:(a:string,d:string)=>void}) {
   const [note,setNote]=useState('');
