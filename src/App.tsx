@@ -1925,7 +1925,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
                 </button>
               ))}
             </div>}
-            <MenuTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} onEdit={item=>setMenuModal({id:item.id,name:item.name,category:item.category,price:String(item.price),description:item.description||'',allergens:(item as any).allergens||'',available:item.available,image:item.image||'',isSpecial:!!(item as any).isSpecial,discountPercent:String((item as any).discountPercent||'')})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:'',isSpecial:false,discountPercent:''})} logAct={(a,d)=>logAct(a,d)}/>
+            <MenuTab branchId={isMulti&&gbf!=='all'&&gbf!==branchId?gbf:branchId} onEdit={item=>setMenuModal({...(item as any), price:String(item.price), discountPercent:String((item as any).discountPercent||'')})} onDel={id=>setDelTarget(id)} onNew={()=>setMenuModal({name:'',category:'',price:'',description:'',allergens:'',available:true,image:'',isSpecial:false,discountPercent:'',code:'',servings:'',nameEn:'',nameZh:'',nameKo:''})} logAct={(a,d)=>logAct(a,d)}/>
           </>}
 
           {tab==='categories'&&<>
