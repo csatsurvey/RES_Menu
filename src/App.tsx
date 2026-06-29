@@ -547,7 +547,6 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
   const [orderSuccess,setOrderSuccess]=useState(false);
   const [dataLoaded,setDataLoaded]=useState(false);
   const [langs,setLangs]=useState({mn:true,en:false,zh:false,ko:false});
-  const [curLang,setCurLang]=useState<'mn'|'en'|'zh'|'ko'>('mn');
   const [locations,setLocations]=useState<Location[]>([]);
 
   useEffect(()=>{
@@ -609,27 +608,28 @@ function CustomerView({branchId,tableNum}:{branchId:string;tableNum:number}) {
         </div>
       </div>
       <div style={{textAlign:'center',padding:'1.25rem 1rem 0.75rem'}}><h2 style={{fontFamily:'Georgia,serif',fontSize:'2rem',fontStyle:'italic',color:C.yellow,margin:0,fontWeight:'400'}}>Меню</h2></div>
-      {/* Хэл сонголт + Байршил */}
-      <div style={{padding:'0 1rem 0.5rem',display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap' as const}}>
-        {Object.entries(langs).filter(([,v])=>v).map(([k])=>{
-          const LN:Record<string,string>={mn:'🇲🇳MN',en:'🇺🇸EN',zh:'🇨🇳ZH',ko:'🇰🇷KO'};
-          return <button key={k} onClick={()=>setCurLang(k as any)} style={{padding:'0.25rem 0.65rem',borderRadius:'20px',border:`1px solid ${curLang===k?C.yellow:C.border}`,background:curLang===k?`${C.yellow}22`:'transparent',color:curLang===k?C.yellow:C.muted,fontWeight:'700',cursor:'pointer',fontSize:'0.72rem'}}>{LN[k]}</button>;
-        })}
-        {locations.filter(l=>l.active).length>0&&<button onClick={()=>setShowLocs(true)} style={{marginLeft:'auto',padding:'0.25rem 0.75rem',borderRadius:'20px',border:`1px solid ${C.border}`,background:'transparent',color:C.muted,cursor:'pointer',fontSize:'0.72rem'}}>📍 Байршил</button>}
-      </div>
+      {/* Байршил товч */}
+      {locations.filter(l=>l.active).length>0&&<div style={{padding:'0 1rem 0.5rem',display:'flex',justifyContent:'flex-end'}}>
+        <button onClick={()=>setShowLocs(true)} style={{padding:'0.25rem 0.75rem',borderRadius:'20px',border:`1px solid ${C.border}`,background:'transparent',color:C.muted,cursor:'pointer',fontSize:'0.72rem'}}>📍 Байршил</button>
+      </div>}
       <div style={{padding:'0 1rem 0.75rem',display:'flex',gap:'0.4rem',overflowX:'auto'}}>
         {visCats.map(cat=><button key={cat} onClick={()=>setActiveCat(cat)} style={{padding:'0.4rem 1rem',borderRadius:'6px',border:`1.5px solid ${activeCat===cat?C.orange:C.border}`,cursor:'pointer',whiteSpace:'nowrap',fontWeight:'700',fontSize:'0.78rem',textTransform:'uppercase' as const,background:activeCat===cat?C.orange:'transparent',color:activeCat===cat?'white':C.muted,transition:'all 0.15s'}}>{cat}</button>)}
       </div>
       <div style={{padding:'0 1rem',maxWidth:'720px',margin:'0 auto'}}>
         {items.filter(i=>i.category===activeCat).map(item=>{
           const q=qty(item.id);
-          const dispName=curLang==='en'&&(item as any).nameEn?(item as any).nameEn:curLang==='zh'&&(item as any).nameZh?(item as any).nameZh:curLang==='ko'&&(item as any).nameKo?(item as any).nameKo:item.name;
           return(
             <div key={item.id} style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,marginBottom:'0.75rem'}}>
               <div style={{padding:'1rem'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.3rem'}}>
                   <div style={{flex:1,paddingRight:'0.75rem'}}>
-                    <h3 style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0,lineHeight:1.3}}>{dispName}</h3>
+                    <h3 style={{color:C.text,fontWeight:'800',fontSize:'1rem',margin:0,lineHeight:1.3}}>{item.name}</h3>
+                    {/* Гадаад хэлний нэрнүүд — менежер идэвхжүүлсэн хэлүүд */}
+                    <div style={{marginTop:'2px'}}>
+                      {langs.en&&(item as any).nameEn&&<p style={{margin:0,fontSize:'0.78rem',color:C.muted,lineHeight:1.4}}>{(item as any).nameEn}</p>}
+                      {langs.zh&&(item as any).nameZh&&<p style={{margin:0,fontSize:'0.78rem',color:C.muted,lineHeight:1.4}}>{(item as any).nameZh}</p>}
+                      {langs.ko&&(item as any).nameKo&&<p style={{margin:0,fontSize:'0.78rem',color:C.muted,lineHeight:1.4}}>{(item as any).nameKo}</p>}
+                    </div>
                     <div style={{display:'flex',gap:'0.4rem',marginTop:'0.25rem',flexWrap:'wrap' as const}}>
                       {(item as any).code&&<span style={{fontSize:'0.65rem',background:`${C.orange}22`,color:C.orange,padding:'0.05rem 0.4rem',borderRadius:'4px',fontWeight:'700'}}>#{(item as any).code}</span>}
                       {(item as any).servings>0&&<span style={{fontSize:'0.65rem',background:`${C.green}18`,color:C.green,padding:'0.05rem 0.4rem',borderRadius:'4px'}}>👥{(item as any).servings}хүн</span>}
@@ -1133,6 +1133,8 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
   const [upl,setUpl]=useState(false);
   const [err,setErr]=useState('');
   const fRef=useRef<HTMLInputElement>(null);
+  // init.id өөрчлөгдөхөд (өөр item edit хийхэд) form шинэчлэгдэнэ
+  useEffect(()=>{setForm(init);setPrev(init.image||'');},[init.id]);
   const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];
     if(!file)return;
