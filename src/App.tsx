@@ -8,7 +8,7 @@ import {
   setTables as setTablesDB, subscribeToTables,
   subscribeToOrders, subscribeToTableOrders, createOrder, updateOrderStatus,
   subscribeToSurveys, createSurvey, setSurveyResolved,
-  subscribeToMenu, addMenuItem, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage,
+  subscribeToMenu, addMenuItem, saveMenuItem, updateMenuItem, deleteMenuItem, compressImage, uploadMenuImage, deleteMenuImage,
   subscribeToCategories, saveCategory, updateCategory, deleteCategory,
   getStaff, addStaff, removeStaff, updateStaff, subscribeToStaff,
   getSettings, saveSettings, saveSurveyQuestions, subscribeToSettings,
@@ -1071,7 +1071,22 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
   const [upl,setUpl]=useState(false);
   const [err,setErr]=useState('');
   const fRef=useRef<HTMLInputElement>(null);
-  const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file)return;setUpl(true);try{const b=await compressImage(file,700,0.78);setPrev(b);setForm((f:any)=>({...f,image:b}));}catch{setErr('Зураг алдаа');}setUpl(false);};
+  const hFile=async(e:ChangeEvent<HTMLInputElement>)=>{
+    const file=e.target.files?.[0];
+    if(!file)return;
+    setUpl(true);
+    try{
+      // 1. Эхлээд compress хийнэ
+      const b64=await compressImage(file,700,0.78);
+      // 2. base64 → Blob → Firebase Storage-д upload
+      const blob=await fetch(b64).then(r=>r.blob());
+      const uploadFile=new File([blob],`menu_${Date.now()}.jpg`,{type:'image/jpeg'});
+      const url=await uploadMenuImage(branchId,uploadFile);
+      setPrev(url);
+      setForm((f:any)=>({...f,image:url}));
+    }catch{setErr('Зураг алдаа');}
+    setUpl(false);
+  };
   const save=async()=>{
     if(!form.name||!form.category||!form.price||isNaN(Number(form.price)))return setErr('Нэр, ангилал, үнэ шаардлагатай');
     setUpl(true);
