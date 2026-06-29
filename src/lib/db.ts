@@ -164,7 +164,8 @@ export const getBranch = async (branchId: string): Promise<Branch | null> => {
 
 export const verifyManagerPin = async (branchId: string, pin: string): Promise<boolean> => {
   const snap = await get(ref(db, `branches/${branchId}/managerPin`));
-  return snap.exists() && snap.val() === pin;
+  if (!snap.exists()) return false;
+  return String(snap.val()).trim() === String(pin).trim();
 };
 
 export const updateBranch = async (
