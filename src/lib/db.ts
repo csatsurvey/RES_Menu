@@ -47,6 +47,15 @@ export interface MenuItem {
   nameKo?: string;        // Солонгос нэр
 }
 
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  image: string;
+  active: boolean;
+  createdAt: number;
+}
+
 export interface OrderItem {
   menuItemId: string;
   name: string;
@@ -59,7 +68,7 @@ export interface Order {
   id: string;
   tableNumber: number;
   items: OrderItem[];
-  status: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'billed' | 'cancelled';
   orderNumber?: string;   // A001, A002...
   customerPhone?: string;
   notes?: string;
@@ -451,6 +460,21 @@ export const setSurveyResolved = async (
 // HELPERS
 // ============================================================
 
+// ── Location CRUD ─────────────────────────────────────
+export const subscribeToLocations = (branchId:string,cb:(l:Location[])=>void):()=>void => {
+  const r=ref(db,`branches/${branchId}/locations`);
+  const h=onValue(r,snap=>{if(!snap.exists())return cb([]);const d=snap.val();cb(Object.entries(d).map(([id,v]:any)=>({id,...v})));});
+  return()=>off(r,'value',h);
+};
+export const saveLocation = async (branchId:string,loc:Omit<Location,'id'|'createdAt'>,locId?:string):Promise<string>=>{
+  if(locId){await update(ref(db,`branches/${branchId}/locations/${locId}`),loc);return locId;}
+  const r=push(ref(db,`branches/${branchId}/locations`));
+  await set(r,{...loc,createdAt:Date.now()});return r.key!;
+};
+export const deleteLocation = async(branchId:string,locId:string):Promise<void>=>{
+  await remove(ref(db,`branches/${branchId}/locations/${locId}`));
+};
+
 export const formatPrice = (price: number): string =>
   price.toLocaleString('mn-MN') + '₮';
 
@@ -467,8 +491,9 @@ export const formatDate = (timestamp: number): string => {
 export const ORDER_STATUS_LABELS: Record<Order['status'], string> = {
   pending: 'Хүлээгдэж байна',
   preparing: 'Бэлтгэж байна',
-  ready: 'Бэлэн болсон',
+  ready: 'Хүргэгдсэн',
   served: 'Хүргэгдсэн',
+  billed: '💳 Борлуулалтаар бүртгэсэн',
   cancelled: 'Цуцлагдсан',
 };
 
@@ -477,6 +502,7 @@ export const ORDER_STATUS_COLORS: Record<Order['status'], string> = {
   preparing: '#3B82F6',
   ready: '#10B981',
   served: '#6B7280',
+  billed: '#8B5CF6',
   cancelled: '#E74C3C',
 };
 
@@ -699,7 +725,7 @@ export const getSalesReport = async (
   if (!snap.exists()) return empty;
 
   const orders: Order[] = Object.values(snap.val()).filter(
-    (o: any) => o.createdAt >= fromMs && o.createdAt <= toMs && o.status === 'served'
+    (o: any) => o.createdAt >= fromMs && o.createdAt <= toMs && (o.status === 'served' || o.status === 'billed')
   ) as Order[];
 
   const totalRevenue = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
