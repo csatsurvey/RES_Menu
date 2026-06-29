@@ -1531,50 +1531,34 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct,a
 }
 
 
-function StaffPinChanger({branchId,allBranchIds}:{branchId:string;allBranchIds:string[]}) {
-  const [staff,setStaff]=useState<Staff[]>([]);
+function StaffPinChanger({branchId,staff}:{branchId:string;staff:Staff[]}) {
   const [sel,setSel]=useState('');
   const [pin,setPin]=useState('');
   const [pin2,setPin2]=useState('');
   const [msg,setMsg]=useState('');
   const [err,setErr]=useState('');
-  useEffect(()=>{
-    // Бүх холбоотой салбаруудын ажилтнуудыг ачаална
-    const ids=[...new Set([branchId,...allBranchIds])];
-    const unsubs=ids.map(bid=>subscribeToStaff(bid,s=>{
-      setStaff(prev=>{
-        const others=prev.filter(x=>(x as any)._bid!==bid);
-        const fresh=s.filter(x=>x.active!==false&&!(x as any).deletedAt).map(x=>({...x,_bid:bid} as any));
-        return[...others,...fresh];
-      });
-    }));
-    return()=>unsubs.forEach(u=>u());
-  },[branchId,allBranchIds.join(',')]);
   const RL:Record<string,string>={chef:'👨‍🍳 Тогооч',waiter:'🛎️ Зөөгч',admin:'🔑 Ахлах'};
   const save=async()=>{
     setMsg('');setErr('');
     if(!sel)return setErr('Ажилтан сонгоно уу');
     if(pin.length<4)return setErr('PIN 4-с дээш тоо');
     if(pin!==pin2)return setErr('PIN давтлага таарахгүй');
-    const s=staff.find(x=>x.id===sel);if(!s)return;
+    const s=staff.find(x=>x.id===sel);
+    if(!s){setErr('Ажилтан олдсонгүй — хуудсыг refresh хийнэ үү');return;}
     try{
       const bid=(s as any)._bid||branchId;
       const sid=s.id;
-      // PIN шууд set() хийнэ
       await updateStaff(bid,sid,{pin});
-      // Баталгаажуулалт — Firebase-с дахин уншина
       const ok=await verifyPinSaved(bid,sid,pin);
-      if(!ok)throw new Error('Firebase-д PIN хадгалагдаагүй байна. Дахин оролдоно уу.');
+      if(!ok)throw new Error('Firebase-д хадгалагдаагүй');
       setPin('');setPin2('');setSel('');
       setMsg(`✅ ${s.name}-н PIN амжилттай солигдлоо`);
       setTimeout(()=>setMsg(''),4000);
-    }catch(e){
-      setErr('❌ '+String(e));
-    }
+    }catch(e){setErr('❌ '+String(e));}
   };
   return(
     <div style={{...CS,marginTop:'1rem'}}>
-      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>👤 АЖИЛТНЫ PIN СОЛИХ</p>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>👤 АЖИЛТНЫ PIN СОЛИХ ({staff.length} ажилтан)</p>
       <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
         <select value={sel} onChange={e=>setSel(e.target.value)} style={{...IS,cursor:'pointer'}}>
           <option value="">— Ажилтан сонгоно уу —</option>
@@ -2171,7 +2155,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             </div>}
             <StaffListWithRoles staff={effectiveStaff} branchId={branchId} isMulti={isMulti} gbf={gbf} onEdit={setEditStaff} onToggle={async(s)=>{const active=(s as any).active!==false;await updateStaff((s as any)._bid||branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}} onDelete={async(s)=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff((s as any)._bid||branchId,s.id);await logAct('Ажилтан устгасан',s.name);}}/>
             {/* Ажилтны PIN солих — Staff tab дотор */}
-            <StaffPinChanger branchId={branchId} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>
+            <StaffPinChanger branchId={branchId} staff={effectiveStaff}/>
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>}
