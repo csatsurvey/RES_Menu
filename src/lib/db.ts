@@ -163,9 +163,35 @@ export const getBranch = async (branchId: string): Promise<Branch | null> => {
 };
 
 export const verifyManagerPin = async (branchId: string, pin: string): Promise<boolean> => {
+  const p = String(pin).trim();
+  // Олон PIN шалгах (managerPins object)
+  const pinsSnap = await get(ref(db, `branches/${branchId}/managerPins`));
+  if (pinsSnap.exists()) {
+    const pins = pinsSnap.val();
+    if (typeof pins === 'object' && Object.keys(pins).some(k => String(k) === p)) return true;
+  }
+  // Нэг PIN (managerPin string) — хуучин хувилбартай нийцтэй
   const snap = await get(ref(db, `branches/${branchId}/managerPin`));
-  if (!snap.exists()) return false;
-  return String(snap.val()).trim() === String(pin).trim();
+  return snap.exists() && String(snap.val()).trim() === p;
+};
+
+export const addManagerPin = async (branchId: string, pin: string): Promise<void> => {
+  await set(ref(db, `branches/${branchId}/managerPins/${pin}`), true);
+};
+
+export const removeManagerPin = async (branchId: string, pin: string): Promise<void> => {
+  await remove(ref(db, `branches/${branchId}/managerPins/${pin}`));
+};
+
+export const getManagerPins = async (branchId: string): Promise<string[]> => {
+  const [snap, pinsSnap] = await Promise.all([
+    get(ref(db, `branches/${branchId}/managerPin`)),
+    get(ref(db, `branches/${branchId}/managerPins`)),
+  ]);
+  const pins: string[] = [];
+  if (snap.exists()) pins.push(String(snap.val()));
+  if (pinsSnap.exists()) pins.push(...Object.keys(pinsSnap.val()).filter(p => !pins.includes(p)));
+  return pins;
 };
 
 export const updateBranch = async (
