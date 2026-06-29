@@ -277,7 +277,16 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     if(!staffBranchId)return setError('Салбар сонгоно уу');
     if(!staffPin.trim())return setError('PIN оруулна уу');
     setLoading(true);resetErr();
-    const s=await verifyStaffPin(staffBranchId,staffPin);
+    // Сонгосон салбараас хайна, олдохгүй бол бүх холбоотой салбараас хайна
+    let s=await verifyStaffPin(staffBranchId,staffPin);
+    if(!s){
+      for(const branch of staffBranches){
+        if(branch.id!==staffBranchId){
+          s=await verifyStaffPin(branch.id,staffPin);
+          if(s)break;
+        }
+      }
+    }
     setLoading(false);
     if(!s)return setError('PIN буруу');
     if((s as any).active===false)return setError('Таны эрх идэвхгүй байна');
@@ -1352,7 +1361,7 @@ function StaffEditModal({branchId,s,onClose,onSaved,logAct}:{branchId:string;s:S
   );
 }
 
-function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:{branchId:string;tables:Table[];managerName?:string;onManagerNameChange?:(n:string)=>void;onLogAct?:(a:string,d?:string)=>void}) {
+function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct,allBranchIds}:{branchId:string;tables:Table[];managerName?:string;onManagerNameChange?:(n:string)=>void;onLogAct?:(a:string,d?:string)=>void;allBranchIds?:string[]}) {
   const [top,setTop]=useState('МЕНЮ');
   const [bot,setBot]=useState('⭐ Сэтгэл ханамжийн судалгаа бөглөх боломжтой');
   const [qs,setQs]=useState(DEF_Q);
@@ -1459,20 +1468,31 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
       <LocationsManager branchId={branchId}/>
 
       {/* Ажилтны PIN солих */}
-      <StaffPinChanger branchId={branchId}/>
+      <StaffPinChanger branchId={branchId} allBranchIds={allBranchIds||[]}/>
     </div>
   );
 }
 
 
-function StaffPinChanger({branchId}:{branchId:string}) {
+function StaffPinChanger({branchId,allBranchIds}:{branchId:string;allBranchIds:string[]}) {
   const [staff,setStaff]=useState<Staff[]>([]);
   const [sel,setSel]=useState('');
   const [pin,setPin]=useState('');
   const [pin2,setPin2]=useState('');
   const [msg,setMsg]=useState('');
   const [err,setErr]=useState('');
-  useEffect(()=>{const u=subscribeToStaff(branchId,s=>setStaff(s.filter(x=>x.active!==false&&!(x as any).deletedAt)));return u;},[branchId]);
+  useEffect(()=>{
+    // Бүх холбоотой салбаруудын ажилтнуудыг ачаална
+    const ids=[...new Set([branchId,...allBranchIds])];
+    const unsubs=ids.map(bid=>subscribeToStaff(bid,s=>{
+      setStaff(prev=>{
+        const others=prev.filter(x=>(x as any)._bid!==bid);
+        const fresh=s.filter(x=>x.active!==false&&!(x as any).deletedAt).map(x=>({...x,_bid:bid} as any));
+        return[...others,...fresh];
+      });
+    }));
+    return()=>unsubs.forEach(u=>u());
+  },[branchId,allBranchIds.join(',')]);
   const RL:Record<string,string>={chef:'👨‍🍳 Тогооч',waiter:'🛎️ Зөөгч',admin:'🔑 Ахлах'};
   const save=async()=>{
     setMsg('');setErr('');
@@ -1480,7 +1500,8 @@ function StaffPinChanger({branchId}:{branchId:string}) {
     if(pin.length<4)return setErr('PIN 4-с дээш тоо');
     if(pin!==pin2)return setErr('PIN давтлага таарахгүй');
     const s=staff.find(x=>x.id===sel);if(!s)return;
-    await updateStaff(branchId,s.id,{pin});
+    const bid=(s as any)._bid||branchId;
+    await updateStaff(bid,s.id,{pin});
     setPin('');setPin2('');setSel('');
     setMsg(`✅ ${s.name}-н PIN шинэчлэгдлээ`);setTimeout(()=>setMsg(''),3000);
   };
@@ -2114,7 +2135,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             {!effectiveStaff.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
           </>}
 
-          {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)}/>}
+          {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>}
           {tab==='logs'&&<LogsTab logs={logs} sibLogs={sibLogs} siblingBranches={siblingBranches} branchId={branchId} bName={bName} isMulti={isMulti}/>}
         </>}
         </div>
