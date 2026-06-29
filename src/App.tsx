@@ -1012,6 +1012,12 @@ function SalesTab({branchId}:{branchId:string}) {
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr style={{background:'rgba(255,255,255,0.04)',borderTop:`2px solid ${C.border}`}}>
+                  <td colSpan={4} style={{padding:'0.6rem 0.875rem',color:C.muted,fontWeight:'700',fontSize:'0.82rem'}}>Нийт {detOrders.length} захиалга</td>
+                  <td style={{padding:'0.6rem 0.875rem',color:C.yellow,fontWeight:'800',textAlign:'right' as const}}>{detOrders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.price*i.quantity,0),0).toLocaleString('mn-MN')}₮</td>
+                </tr>
+              </tfoot>
             </table>
           </div>}
         </div>}
@@ -1443,15 +1449,11 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
 
       <button onClick={saveAll} disabled={loading} style={{width:'100%',padding:'0.875rem',background:saved?C.green:C.orange,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',cursor:'pointer',fontSize:'0.9rem',transition:'background 0.2s'}}>{loading?'Хадгалж байна...':saved?'✅ Хадгалагдлаа!':'💾 Бүгдийг хадгалах'}</button>
 
-      {/* Хэлний тохиргоо */}
-      <LanguageSettings branchId={branchId}/>
-
       {/* Байршил */}
       <LocationsManager branchId={branchId}/>
 
-      {/* Менежерийн PIN солих */}
+      {/* Ажилтны PIN солих */}
       <StaffPinChanger branchId={branchId}/>
-      <PinChanger branchId={branchId}/>
     </div>
   );
 }
