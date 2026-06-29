@@ -487,6 +487,15 @@ export const setSurveyResolved = async (
 // HELPERS
 // ============================================================
 
+export const getOrdersInRange = async (branchId: string, fromMs: number, toMs: number): Promise<Order[]> => {
+  const snap = await get(ref(db, `branches/${branchId}/orders`));
+  if (!snap.exists()) return [];
+  return (Object.entries(snap.val()) as [string, any][])
+    .map(([id, v]) => ({ id, ...v } as Order))
+    .filter(o => o.createdAt >= fromMs && o.createdAt <= toMs && (o.status === 'served' || o.status === 'billed'))
+    .sort((a, b) => b.createdAt - a.createdAt);
+};
+
 // ── Location CRUD ─────────────────────────────────────
 export const subscribeToLocations = (branchId:string,cb:(l:Location[])=>void):()=>void => {
   const r=ref(db,`branches/${branchId}/locations`);
