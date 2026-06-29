@@ -1344,8 +1344,43 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
 
 function StaffListWithRoles({staff,branchId,isMulti,gbf,onEdit,onToggle,onDelete}:{staff:Staff[];branchId:string;isMulti:boolean;gbf:string;onEdit:(s:Staff)=>void;onToggle:(s:Staff)=>void;onDelete:(s:Staff)=>void}) {
   const [roleF,setRoleF]=useState('all');
+  const [pinEdit,setPinEdit]=useState<string|null>(null); // staffId
+  const [pinVal,setPinVal]=useState('');
+  const [pinMsg,setPinMsg]=useState('');
+  const [pinBusy,setPinBusy]=useState(false);
   const ROLES=[{k:'all',l:'👥 Бүгд',c:C.yellow},{k:'chef',l:'👨‍🍳 Тогооч',c:C.orange},{k:'waiter',l:'🛎️ Зөөгч',c:'#3B82F6'},{k:'admin',l:'🔑 Менежер',c:'#8B5CF6'}];
   const roleStaff=roleF==='all'?staff:staff.filter(s=>s.role===roleF);
+  const DBURL='https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+  const savePin=async(s:Staff)=>{
+    if(pinVal.length<4){setPinMsg('❌ 4+ тоо оруулна уу');return;}
+    setPinBusy(true);setPinMsg('⏳ Хадгалж байна...');
+    const bid=(s as any)._bid||branchId;
+    const sid=s.id;
+    const newPin=pinVal.trim();
+    console.log('[savePin] branch=',bid,'staff=',sid,'name=',s.name,'newPin=',newPin);
+    try{
+      // Raw REST PUT — Firebase SDK орчны race condition-оос ангид, баталгаатай бичнэ
+      const putUrl=`${DBURL}/branches/${bid}/staff/${sid}/pin.json`;
+      const putRes=await fetch(putUrl,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(newPin)});
+      console.log('[savePin] PUT status:',putRes.status);
+      if(!putRes.ok)throw new Error('HTTP '+putRes.status);
+      // Шинэ GET-ээр баталгаажуулна (cache-аас биш)
+      const getRes=await fetch(`${DBURL}/branches/${bid}/staff/${sid}/pin.json?_=${Date.now()}`);
+      const verifyVal=await getRes.json();
+      console.log('[savePin] verify value:',verifyVal);
+      if(String(verifyVal).trim()!==newPin){
+        throw new Error(`Баталгаажсангүй: Firebase="${verifyVal}" хүссэн="${newPin}"`);
+      }
+      setPinMsg(`✅ PIN: ${newPin} баталгаатай хадгалагдлаа`);
+      setTimeout(()=>{setPinEdit(null);setPinVal('');setPinMsg('');},2500);
+    }catch(e){
+      console.error('[savePin] error:',e);
+      setPinMsg('❌ '+String(e));
+    }
+    setPinBusy(false);
+  };
+
   return(<>
     <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.875rem',flexWrap:'wrap' as const}}>
       {ROLES.map(r=>{
@@ -1359,26 +1394,35 @@ function StaffListWithRoles({staff,branchId,isMulti,gbf,onEdit,onToggle,onDelete
       const rl=s.role==='admin'?'Ажлын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
       const sBid=(s as any)._bid||branchId;
       const sBn=(s as any)._bn||'';
+      const isEditing=pinEdit===s.id;
       return(
         <div key={`${sBid}_${s.id}`} style={{...CS,opacity:active?1:0.55}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
-            <div style={{width:'42px',height:'42px',borderRadius:'50%',background:C.inpBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.3rem'}}>{ri}</div>
-            <div style={{flex:1}}>
+            <div style={{width:'42px',height:'42px',borderRadius:'50%',background:C.inpBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.3rem',flexShrink:0}}>{ri}</div>
+            <div style={{flex:1,minWidth:0}}>
               <p style={{fontWeight:'700',color:active?C.text:C.muted,margin:'0 0 0.1rem'}}>{s.name}</p>
               <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap' as const}}>
                 <span style={{fontSize:'0.72rem',color:C.muted}}>{rl}{!active?' · Идэвхгүй':''}</span>
                 {isMulti&&gbf==='all'&&sBn&&<span style={{fontSize:'0.62rem',background:`${C.orange}22`,color:C.orange,padding:'0.1rem 0.4rem',borderRadius:'6px',fontWeight:'600'}}>📍 {sBn}</span>}
               </div>
             </div>
-            <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
+            <div style={{display:'flex',gap:'0.4rem',alignItems:'center',flexShrink:0}}>
               {sBid===branchId&&<>
-                <button onClick={()=>onEdit(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
+                <button onClick={()=>onEdit(s)} style={{padding:'0.4rem 0.6rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.75rem',fontWeight:'800'}}>✏️</button>
+                <button onClick={()=>{setPinEdit(isEditing?null:s.id);setPinVal('');setPinMsg('');}} style={{padding:'0.4rem 0.6rem',background:isEditing?`${C.green}22`:`${C.orange}22`,border:`1px solid ${isEditing?C.green:C.orange}44`,borderRadius:'8px',color:isEditing?C.green:C.orange,cursor:'pointer',fontSize:'0.72rem',fontWeight:'700'}}>🔑 PIN</button>
                 <Toggle on={active} onChange={()=>onToggle(s)}/>
-                <button onClick={()=>onDelete(s)} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
+                <button onClick={()=>onDelete(s)} style={{padding:'0.4rem 0.5rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.75rem'}}>🗑</button>
               </>}
-              {sBid!==branchId&&<span style={{fontSize:'0.72rem',color:C.muted}}>← Тус салбарыг сонгоно уу</span>}
             </div>
           </div>
+          {isEditing&&<div style={{marginTop:'0.75rem',padding:'0.75rem',background:C.inpBg,borderRadius:'10px',border:`1px solid ${C.border}`}}>
+            <p style={{fontSize:'0.75rem',color:C.muted,margin:'0 0 0.5rem'}}>{s.name}-н шинэ PIN ({sBid.slice(0,8)}...):</p>
+            <div style={{display:'flex',gap:'0.5rem'}}>
+              <input value={pinVal} onChange={e=>setPinVal(e.target.value.replace(/\D/g,''))} type="text" inputMode="numeric" placeholder="Шинэ PIN" style={{...IS,flex:1,padding:'0.5rem 0.75rem'}} maxLength={8} disabled={pinBusy} onKeyDown={e=>{if(e.key==='Enter'&&!pinBusy)savePin(s);}}/>
+              <button onClick={()=>savePin(s)} disabled={pinBusy} style={{padding:'0.5rem 1rem',background:pinBusy?C.muted:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:pinBusy?'default':'pointer',fontSize:'0.82rem',whiteSpace:'nowrap' as const}}>{pinBusy?'...':'Хадгалах'}</button>
+            </div>
+            {pinMsg&&<p style={{fontSize:'0.78rem',margin:'0.4rem 0 0',color:pinMsg.startsWith('✅')?C.green:pinMsg.startsWith('⏳')?C.muted:C.red}}>{pinMsg}</p>}
+          </div>}
         </div>
       );
     })}
@@ -1531,44 +1575,85 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct,a
 }
 
 
-function StaffPinChanger({branchId,staff}:{branchId:string;staff:Staff[]}) {
+function StaffPinChanger({branchId}:{branchId:string}) {
+  // ⚠️ ЭНЭ КОМПОНЕНТ нь app-ын Firebase SDK абстракц (subscribeToStaff/updateStaff)-г
+  // огт ашиглахгүй. Оронд нь, баталгаажсан raw REST API ашиглана — adminPanel state-н
+  // race condition / prop drilling алдаанаас бүрэн ангид.
+  const DBURL='https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app';
+  const [list,setList]=useState<{id:string;name:string;role:string}[]>([]);
   const [sel,setSel]=useState('');
   const [pin,setPin]=useState('');
   const [pin2,setPin2]=useState('');
   const [msg,setMsg]=useState('');
   const [err,setErr]=useState('');
+  const [loading,setLoading]=useState(false);
   const RL:Record<string,string>={chef:'👨‍🍳 Тогооч',waiter:'🛎️ Зөөгч',admin:'🔑 Ахлах'};
+
+  const loadStaff=async()=>{
+    try{
+      const r=await fetch(`${DBURL}/branches/${branchId}/staff.json`);
+      const data=await r.json();
+      console.log('[StaffPinChanger] raw staff data:',data);
+      if(!data){setList([]);return;}
+      const arr=Object.entries(data)
+        .map(([id,v]:any)=>({id,name:v?.name||'(нэргүй)',role:v?.role||'waiter',active:v?.active,deletedAt:v?.deletedAt}))
+        .filter((s:any)=>s.active!==false&&!s.deletedAt);
+      console.log('[StaffPinChanger] filtered list:',arr);
+      setList(arr);
+    }catch(e){
+      console.error('[StaffPinChanger] load error:',e);
+      setErr('Ажилтны жагсаалт татахад алдаа гарлаа');
+    }
+  };
+  useEffect(()=>{loadStaff();},[branchId]);
+
   const save=async()=>{
     setMsg('');setErr('');
+    console.log('[StaffPinChanger] save click. sel=',sel,'pin=',pin);
     if(!sel)return setErr('Ажилтан сонгоно уу');
     if(pin.length<4)return setErr('PIN 4-с дээш тоо');
     if(pin!==pin2)return setErr('PIN давтлага таарахгүй');
-    const s=staff.find(x=>x.id===sel);
-    if(!s){setErr('Ажилтан олдсонгүй — хуудсыг refresh хийнэ үү');return;}
+    const s=list.find(x=>x.id===sel);
+    if(!s){setErr('Ажилтан олдсонгүй (жагсаалтаас алга болсон)');return;}
+    setLoading(true);
     try{
-      const bid=(s as any)._bid||branchId;
-      const sid=s.id;
-      await updateStaff(bid,sid,{pin});
-      const ok=await verifyPinSaved(bid,sid,pin);
-      if(!ok)throw new Error('Firebase-д хадгалагдаагүй');
+      const putUrl=`${DBURL}/branches/${branchId}/staff/${sel}/pin.json`;
+      console.log('[StaffPinChanger] PUT:',putUrl,'body:',pin);
+      const putRes=await fetch(putUrl,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(pin)});
+      console.log('[StaffPinChanger] PUT status:',putRes.status);
+      if(!putRes.ok)throw new Error('HTTP '+putRes.status+' — Firebase бичих эрхгүй байж магадгүй (Rules шалгана уу)');
+      const putVal=await putRes.json();
+      console.log('[StaffPinChanger] PUT response value:',putVal);
+      // Шууд дахин уншиж баталгаажуулна (cache биш, шинэ GET хүсэлт)
+      const getRes=await fetch(`${DBURL}/branches/${branchId}/staff/${sel}/pin.json?_=${Date.now()}`);
+      const verifyVal=await getRes.json();
+      console.log('[StaffPinChanger] verify GET value:',verifyVal);
+      if(String(verifyVal).trim()!==String(pin).trim()){
+        throw new Error(`Бичсэн ч баталгаажсангүй. Firebase-д байгаа: "${verifyVal}", хүссэн: "${pin}"`);
+      }
       setPin('');setPin2('');setSel('');
-      setMsg(`✅ ${s.name}-н PIN амжилттай солигдлоо`);
-      setTimeout(()=>setMsg(''),4000);
-    }catch(e){setErr('❌ '+String(e));}
+      setMsg(`✅ ${s.name}-н PIN "${pin}" болж баталгаатай солигдлоо`);
+      setTimeout(()=>setMsg(''),5000);
+    }catch(e){
+      console.error('[StaffPinChanger] save error:',e);
+      setErr('❌ '+String(e));
+    }
+    setLoading(false);
   };
   return(
     <div style={{...CS,marginTop:'1rem'}}>
-      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>👤 АЖИЛТНЫ PIN СОЛИХ ({staff.length} ажилтан)</p>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>👤 АЖИЛТНЫ PIN СОЛИХ ({list.length} ажилтан)</p>
+      <p style={{color:C.muted,fontSize:'0.7rem',margin:'0 0 0.6rem'}}>⚠️ Зөвхөн энэ салбарын ({branchId.slice(0,8)}...) ажилтнууд жагсаагдана</p>
       <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
         <select value={sel} onChange={e=>setSel(e.target.value)} style={{...IS,cursor:'pointer'}}>
           <option value="">— Ажилтан сонгоно уу —</option>
-          {staff.map(s=><option key={s.id} value={s.id}>{s.name} ({RL[s.role]||s.role})</option>)}
+          {list.map(s=><option key={s.id} value={s.id}>{s.name} ({RL[s.role]||s.role})</option>)}
         </select>
         <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="Шинэ PIN (4+ тоо)" style={IS} maxLength={8}/>
         <input value={pin2} onChange={e=>setPin2(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN давтах" style={IS} maxLength={8}/>
         {err&&<p style={{color:C.red,fontSize:'0.78rem',margin:0}}>{err}</p>}
         {msg&&<p style={{color:C.green,fontSize:'0.78rem',margin:0}}>{msg}</p>}
-        <button onClick={save} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>PIN солих</button>
+        <button onClick={save} disabled={loading} style={{padding:'0.7rem',background:loading?C.muted:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:loading?'default':'pointer',fontSize:'0.85rem'}}>{loading?'Хадгалж байна...':'PIN солих'}</button>
       </div>
     </div>
   );
@@ -2155,7 +2240,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             </div>}
             <StaffListWithRoles staff={effectiveStaff} branchId={branchId} isMulti={isMulti} gbf={gbf} onEdit={setEditStaff} onToggle={async(s)=>{const active=(s as any).active!==false;await updateStaff((s as any)._bid||branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}} onDelete={async(s)=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff((s as any)._bid||branchId,s.id);await logAct('Ажилтан устгасан',s.name);}}/>
             {/* Ажилтны PIN солих — Staff tab дотор */}
-            <StaffPinChanger branchId={branchId} staff={effectiveStaff}/>
+            <StaffPinChanger branchId={branchId}/>
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>}
