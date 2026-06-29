@@ -1,4 +1,5 @@
-import { db } from './firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from './firebase';
 import { ref, set, get, push, update, onValue, off, remove } from 'firebase/database';
 
 // ============================================================
@@ -498,6 +499,26 @@ export const deleteMenuItem = async (
     deletedAt: Date.now(),
     deletedBy: deletedBy || 'Менежер',
   });
+};
+
+// ── Firebase Storage — зураг upload/delete ──────────────────
+
+export const uploadMenuImage = async (
+  branchId: string,
+  file: File
+): Promise<string> => {
+  const path = `menu/${branchId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: 'image/jpeg' });
+  return await getDownloadURL(ref);
+};
+
+export const deleteMenuImage = async (imageUrl: string): Promise<void> => {
+  if (!imageUrl || imageUrl.startsWith('data:')) return; // base64 бол хэрэггүй
+  try {
+    const ref = storageRef(storage, imageUrl);
+    await deleteObject(ref);
+  } catch { /* зураг байхгүй бол алгасна */ }
 };
 
 // ── Image compress to base64 (browser-side) ─────────
