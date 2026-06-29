@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   Branch, Table, Order, Survey, Staff, MenuItem, Category,
   getAllBranches, subscribeToBranches, subscribeToBranchesByLicenseKey, createSubBranch,
-  createBranch, getBranch, verifyManagerPin, verifyStaffPin,
+  createBranch, getBranch, verifyManagerPin, verifyStaffPin, updateBranch,
   setTables as setTablesDB, subscribeToTables,
   subscribeToOrders, subscribeToTableOrders, createOrder, updateOrderStatus,
   subscribeToSurveys, createSurvey, setSurveyResolved,
@@ -1378,10 +1378,41 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
 
       {/* Байршил */}
       <LocationsManager branchId={branchId}/>
+
+      {/* Менежерийн PIN солих */}
+      <PinChanger branchId={branchId}/>
     </div>
   );
 }
 
+
+function PinChanger({branchId}:{branchId:string}) {
+  const [pin,setPin]=useState('');
+  const [pin2,setPin2]=useState('');
+  const [msg,setMsg]=useState('');
+  const [err,setErr]=useState('');
+  const save=async()=>{
+    setMsg('');setErr('');
+    if(pin.length<4)return setErr('PIN 4-с дээш тоо байх ёстой');
+    if(pin!==pin2)return setErr('PIN давтлага таарахгүй байна');
+    await updateBranch(branchId,{managerPin:pin});
+    setPin('');setPin2('');
+    setMsg('✅ PIN амжилттай солигдлоо');
+    setTimeout(()=>setMsg(''),3000);
+  };
+  return(
+    <div style={{...CS,marginTop:'1rem'}}>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>🔐 МЕНЕЖЕРИЙН PIN СОЛИХ</p>
+      <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
+        <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="Шинэ PIN (4+ тоо)" style={IS} maxLength={8}/>
+        <input value={pin2} onChange={e=>setPin2(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN давтах" style={IS} maxLength={8}/>
+        {err&&<p style={{color:C.red,fontSize:'0.78rem',margin:0}}>{err}</p>}
+        {msg&&<p style={{color:C.green,fontSize:'0.78rem',margin:0}}>{msg}</p>}
+        <button onClick={save} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>PIN солих</button>
+      </div>
+    </div>
+  );
+}
 
 function LanguageSettings({branchId}:{branchId:string}) {
   const [langs,setLangs]=useState({mn:true,en:false,zh:false,ko:false});
