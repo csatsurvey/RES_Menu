@@ -297,7 +297,9 @@ export const verifyStaffPin = async (
 ): Promise<Staff | null> => {
   const snap = await get(ref(db, `branches/${branchId}/staff`));
   if (!snap.exists()) return null;
-  const found = Object.entries(snap.val()).find(([_, val]: any) => val.pin === pin);
+  const found = Object.entries(snap.val()).find(([_, val]: any) =>
+    String(val.pin).trim() === String(pin).trim() && val.active !== false && !val.deletedAt
+  );
   if (!found) return null;
   return { id: found[0], ...(found[1] as any) };
 };
