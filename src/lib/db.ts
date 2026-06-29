@@ -649,7 +649,19 @@ export const updateStaff = async (
   staffId: string,
   data: Partial<{ name: string; role: 'chef' | 'waiter' | 'admin'; pin: string; active: boolean }>
 ): Promise<void> => {
-  await update(ref(db, `branches/${branchId}/staff/${staffId}`), data);
+  // update() биш нэг нэгээр set() хийнэ — найдвартай
+  for (const [key, val] of Object.entries(data)) {
+    await set(ref(db, `branches/${branchId}/staff/${staffId}/${key}`), val);
+  }
+};
+
+export const verifyPinSaved = async (
+  branchId: string,
+  staffId: string,
+  expectedPin: string
+): Promise<boolean> => {
+  const snap = await get(ref(db, `branches/${branchId}/staff/${staffId}/pin`));
+  return snap.exists() && String(snap.val()).trim() === String(expectedPin).trim();
 };
 
 // ── Activity Log ──────────────────────────────────────────────
