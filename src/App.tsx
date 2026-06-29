@@ -819,14 +819,14 @@ function OrdersKitchenView({orders,branchId,showBranchName,branchNames,currentBr
         {[{k:'today',l:'📅 Өнөөдөр'},{k:'all',l:'Бүгд'}].map(t=><button key={t.k} onClick={()=>setDf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${df===t.k?C.yellow:C.border}`,background:df===t.k?`${C.yellow}22`:'transparent',color:df===t.k?C.yellow:C.muted,fontWeight:df===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>{t.l}</button>)}
         <span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.75rem',marginLeft:'0.25rem'}}>{active.length} идэвхтэй</span>
         <button onClick={()=>setSf(sf==='served'?'all':'served')} style={{marginLeft:'auto',padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf==='served'?'#6B7280':'rgba(255,255,255,0.15)'}`,background:sf==='served'?'rgba(107,114,128,0.22)':'transparent',color:sf==='served'?'#9CA3AF':C.muted,fontWeight:sf==='served'?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>
-          📦 Хүргэгдсэн ({served.length})
+          💳 Борлуулалтаар бүртгэгдсэн ({served.length})
         </button>
       </div>
       {sf!=='served'&&<div style={{display:'flex',gap:'0.4rem',marginBottom:'1.25rem',flexWrap:'wrap' as const}}>
         {[{k:'all',l:`📋 Бүгд (${active.length})`,c:C.yellow},{k:'pending',l:`🟡 Хүлээж (${cnt.pending})`,c:'#F59E0B'},{k:'preparing',l:`🔵 Бэлтгэж (${cnt.preparing})`,c:'#3B82F6'},{k:'ready',l:`🟢 Бэлэн (${cnt.ready})`,c:'#10B981'},{k:'served',l:`🟣 Хүргэгдсэн (${cnt.served})`,c:'#8B5CF6'}].map(t=><button key={t.k} onClick={()=>setSf(t.k as any)} style={{padding:'0.4rem 0.875rem',borderRadius:'20px',border:`1px solid ${sf===t.k?t.c:C.border}`,background:sf===t.k?`${t.c}22`:'transparent',color:sf===t.k?t.c:C.muted,fontWeight:sf===t.k?'700':'500',cursor:'pointer',fontSize:'0.78rem',whiteSpace:'nowrap' as const}}>{t.l}</button>)}
       </div>}
       {sf==='served'&&<div style={{background:'rgba(107,114,128,0.12)',borderRadius:'10px',padding:'0.6rem 1rem',marginBottom:'1rem',border:'1px solid rgba(107,114,128,0.25)'}}>
-        <p style={{color:'#9CA3AF',fontSize:'0.78rem',margin:0}}>📦 Хүргэгдсэн захиалгын архив — {served.length} захиалга</p>
+        <p style={{color:'#9CA3AF',fontSize:'0.78rem',margin:0}}>💳 Борлуулалтаар бүртгэгдсэн захиалгын архив — {served.length} захиалга</p>
       </div>}
       {filtered.length===0&&<div style={{textAlign:'center',padding:'4rem 2rem',color:C.muted}}><div style={{fontSize:'3.5rem',marginBottom:'0.75rem'}}>{sf==='served'?'📦':'🎉'}</div><p style={{fontWeight:'700'}}>{sf==='served'?'Хүргэгдсэн захиалга байхгүй':'Захиалга байхгүй'}</p></div>}
       {filtered.map(o=><div key={o.id}><OrderCard o={o} branchId={(o as any)._bid||branchId} branchLabel={showBranchName&&branchNames?(branchNames[(o as any)._bid||branchId]||''):undefined}/></div>)}
@@ -993,7 +993,6 @@ function SalesTab({branchId}:{branchId:string}) {
               <tbody>
                 {detOrders.map(o=>{
                   const tot=o.items.reduce((s,i)=>s+i.price*i.quantity,0);
-                  const dt=new Date(o.createdAt);
                   return(
                     <tr key={o.id} style={{borderBottom:`1px solid ${C.border}`}}>
                       <td style={{padding:'0.5rem 0.875rem',color:C.yellow,fontWeight:'700'}}>{(o as any).orderNumber||'—'}</td>
@@ -1012,13 +1011,20 @@ function SalesTab({branchId}:{branchId:string}) {
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr style={{background:'rgba(255,255,255,0.04)',borderTop:`2px solid ${C.border}`}}>
-                  <td colSpan={4} style={{padding:'0.6rem 0.875rem',color:C.muted,fontWeight:'700',fontSize:'0.82rem'}}>Нийт {detOrders.length} захиалга</td>
-                  <td style={{padding:'0.6rem 0.875rem',color:C.yellow,fontWeight:'800',textAlign:'right' as const}}>{detOrders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.price*i.quantity,0),0).toLocaleString('mn-MN')}₮</td>
-                </tr>
-              </tfoot>
             </table>
+          </div>}
+          {/* Нийт дүн — хураангуй загварт */}
+          {detOrders.length>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.6rem',padding:'1rem',borderTop:`1px solid ${C.border}`}}>
+            {[
+              {l:'Нийт захиалга',v:String(detOrders.length),c:C.yellow},
+              {l:'Нийт тоо ширхэг',v:`${detOrders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.quantity,0),0)} ш`,c:'#5eead4'},
+              {l:'Нийт орлого',v:formatPrice(detOrders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.price*i.quantity,0),0)),c:C.green},
+            ].map(s=>(
+              <div key={s.l} style={{textAlign:'center' as const,padding:'0.5rem'}}>
+                <p style={{color:s.c,fontWeight:'800',fontSize:'1.1rem',margin:'0 0 0.2rem'}}>{s.v}</p>
+                <p style={{color:C.muted,fontSize:'0.7rem',margin:0}}>{s.l}</p>
+              </div>
+            ))}
           </div>}
         </div>}
       </>}
