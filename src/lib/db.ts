@@ -37,8 +37,14 @@ export interface MenuItem {
   image: string;
   available: boolean;
   allergens?: string;
-  isSpecial?: boolean;      // Онцлох/тусгай хоол
-  discountPercent?: number; // Хямдрал %
+  isSpecial?: boolean;
+  discountPercent?: number;
+  // Шинэ талбарууд
+  code?: string;          // Хоолны код (жш: A01, B02)
+  servings?: number;      // Хэдэн хүний порц
+  nameEn?: string;        // Англи нэр
+  nameZh?: string;        // Хятад нэр
+  nameKo?: string;        // Солонгос нэр
 }
 
 export interface OrderItem {
