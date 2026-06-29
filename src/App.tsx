@@ -781,7 +781,14 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
         </div>
         <div style={{textAlign:'right' as const}}>
           <div style={{fontSize:'0.72rem',padding:'0.25rem 0.65rem',borderRadius:'20px',fontWeight:'700',background:ORDER_STATUS_COLORS[o.status]+'22',color:ORDER_STATUS_COLORS[o.status],marginBottom:'0.2rem'}}>{ORDER_STATUS_LABELS[o.status]}</div>
-          <div style={{fontSize:'0.7rem',color:el>=15?C.red:el>=5?C.yellow:C.muted,fontWeight:'600'}}>{formatTime(o.createdAt)} · {el}мин</div>
+          {o.status==='billed'||o.status==='served'?(
+            <div style={{fontSize:'0.7rem',color:C.muted}}>
+              <div>📥 {formatTime(o.createdAt)} → 📤 {formatTime(o.updatedAt||o.createdAt)}</div>
+              <div style={{color:C.green,fontWeight:'700',marginTop:'2px'}}>⏱ {(()=>{const ms=(o.updatedAt||o.createdAt)-o.createdAt;const s=Math.floor(ms/1000);const h=Math.floor(s/3600);const m=Math.floor((s%3600)/60);const sc=s%60;return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sc).padStart(2,'0')}`;})()}</div>
+            </div>
+          ):(
+            <div style={{fontSize:'0.7rem',color:el>=15?C.red:el>=5?C.yellow:C.muted,fontWeight:'600'}}>{formatTime(o.createdAt)} · {el}мин</div>
+          )}
         </div>
       </div>
       <div style={{padding:'0.875rem 1rem'}}>
@@ -2090,7 +2097,6 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
           )}
 
           {tab==='staff'&&<>
-            {/* Add staff: only for current branch or selected specific branch */}
             {(!isMulti||gbf!=='all')&&<div style={CS}>
               <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>➕ Шинэ ажилтан нэмэх {isMulti&&gbf!=='all'&&<span style={{color:C.orange,fontWeight:'600',fontSize:'0.72rem'}}>({gbfLabel})</span>}</p>
               <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem'}}>
@@ -2103,36 +2109,50 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
             {isMulti&&gbf==='all'&&<div style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'10px',padding:'0.6rem 0.875rem',marginBottom:'0.875rem',fontSize:'0.78rem',color:'rgba(147,197,253,0.9)'}}>
               ℹ️ Ажилтан нэмэх бол дээрх шүүлтрээс тухайн салбарыг сонгоно уу.
             </div>}
-            {effectiveStaff.map(s=>{
-              const active=(s as any).active!==false;
-              const ri=s.role==='admin'?'🔑':s.role==='chef'?'👨‍🍳':'🛎️';
-              const rl=s.role==='admin'?'Ажлын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
-              const sBid=(s as any)._bid||branchId;
-              const sBn=(s as any)._bn||'';
-              return(
-                <div key={`${sBid}_${s.id}`} style={{...CS,opacity:active?1:0.55}}>
-                  <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
-                    <div style={{width:'42px',height:'42px',borderRadius:'50%',background:C.inpBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.3rem'}}>{ri}</div>
-                    <div style={{flex:1}}>
-                      <p style={{fontWeight:'700',color:active?C.text:C.muted,margin:'0 0 0.1rem'}}>{s.name}</p>
-                      <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap' as const}}>
-                        <span style={{fontSize:'0.72rem',color:C.muted}}>{rl}{!active?' · Идэвхгүй':''}</span>
-                        {isMulti&&gbf==='all'&&sBn&&<span style={{fontSize:'0.62rem',background:`${C.orange}22`,color:C.orange,padding:'0.1rem 0.4rem',borderRadius:'6px',fontWeight:'600'}}>📍 {sBn}</span>}
+            {/* Роллоор таб */}
+            {(()=>{
+              const ROLES=[{k:'all',l:'👥 Бүгд',c:C.yellow},{k:'chef',l:'👨‍🍳 Тогооч',c:C.orange},{k:'waiter',l:'🛎️ Зөөгч',c:'#3B82F6'},{k:'admin',l:'🔑 Менежер',c:'#8B5CF6'}];
+              const [roleF,setRoleF]=useState('all');
+              const roleStaff=roleF==='all'?effectiveStaff:effectiveStaff.filter(s=>s.role===roleF);
+              return(<>
+                <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.875rem',flexWrap:'wrap' as const}}>
+                  {ROLES.map(r=>{
+                    const cnt=r.k==='all'?effectiveStaff.length:effectiveStaff.filter(s=>s.role===r.k).length;
+                    return <button key={r.k} onClick={()=>setRoleF(r.k)} style={{padding:'0.38rem 0.75rem',borderRadius:'20px',border:`1px solid ${roleF===r.k?r.c:C.border}`,background:roleF===r.k?`${r.c}22`:'transparent',color:roleF===r.k?r.c:C.muted,fontWeight:roleF===r.k?'700':'500',cursor:'pointer',fontSize:'0.75rem'}}>{r.l} ({cnt})</button>;
+                  })}
+                </div>
+                {roleStaff.map(s=>{
+                  const active=(s as any).active!==false;
+                  const ri=s.role==='admin'?'🔑':s.role==='chef'?'👨‍🍳':'🛎️';
+                  const rl=s.role==='admin'?'Ажлын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
+                  const sBid=(s as any)._bid||branchId;
+                  const sBn=(s as any)._bn||'';
+                  return(
+                    <div key={`${sBid}_${s.id}`} style={{...CS,opacity:active?1:0.55}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                        <div style={{width:'42px',height:'42px',borderRadius:'50%',background:C.inpBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.3rem'}}>{ri}</div>
+                        <div style={{flex:1}}>
+                          <p style={{fontWeight:'700',color:active?C.text:C.muted,margin:'0 0 0.1rem'}}>{s.name}</p>
+                          <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap' as const}}>
+                            <span style={{fontSize:'0.72rem',color:C.muted}}>{rl}{!active?' · Идэвхгүй':''}</span>
+                            {isMulti&&gbf==='all'&&sBn&&<span style={{fontSize:'0.62rem',background:`${C.orange}22`,color:C.orange,padding:'0.1rem 0.4rem',borderRadius:'6px',fontWeight:'600'}}>📍 {sBn}</span>}
+                          </div>
+                        </div>
+                        <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
+                          {sBid===branchId&&<>
+                            <button onClick={()=>setEditStaff(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
+                            <Toggle on={active} onChange={async()=>{await updateStaff(sBid,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}}/>
+                            <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(sBid,s.id);await logAct('Ажилтан устгасан',s.name);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
+                          </>}
+                          {sBid!==branchId&&<span style={{fontSize:'0.72rem',color:C.muted}}>← Тус салбарыг сонгоно уу</span>}
+                        </div>
                       </div>
                     </div>
-                    <div style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
-                      {sBid===branchId&&<>
-                        <button onClick={()=>setEditStaff(s)} style={{padding:'0.4rem 0.8rem',background:C.yellow,border:'none',borderRadius:'8px',color:'#1a1a1e',cursor:'pointer',fontSize:'0.78rem',fontWeight:'800'}}>✏️ Засах</button>
-                        <Toggle on={active} onChange={async()=>{await updateStaff(sBid,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}}/>
-                        <button onClick={async()=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff(sBid,s.id);await logAct('Ажилтан устгасан',s.name);}} style={{padding:'0.4rem 0.6rem',background:`${C.red}22`,border:'none',color:C.red,borderRadius:'8px',cursor:'pointer',fontSize:'0.78rem'}}>🗑</button>
-                      </>}
-                      {sBid!==branchId&&<span style={{fontSize:'0.72rem',color:C.muted}}>← Тус салбарыг сонгоно уу</span>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {!effectiveStaff.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
+                  );
+                })}
+                {!roleStaff.length&&<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Ажилтан байхгүй</p>}
+              </>);
+            })()}
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>}
