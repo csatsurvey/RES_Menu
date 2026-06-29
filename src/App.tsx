@@ -1557,10 +1557,23 @@ function StaffPinChanger({branchId,allBranchIds}:{branchId:string;allBranchIds:s
     if(pin.length<4)return setErr('PIN 4-с дээш тоо');
     if(pin!==pin2)return setErr('PIN давтлага таарахгүй');
     const s=staff.find(x=>x.id===sel);if(!s)return;
-    const bid=(s as any)._bid||branchId;
-    await updateStaff(bid,s.id,{pin});
-    setPin('');setPin2('');setSel('');
-    setMsg(`✅ ${s.name}-н PIN шинэчлэгдлээ`);setTimeout(()=>setMsg(''),3000);
+    try{
+      const bid=(s as any)._bid||branchId;
+      const sid=s.id;
+      // update() биш set() ашиглан PIN шууд тохируулна
+      const r=await fetch(
+        `https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app/branches/${bid}/staff/${sid}/pin.json`,
+        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(pin)}
+      );
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const saved=await r.json();
+      if(saved!==pin)throw new Error('PIN баталгаажаагүй: '+saved);
+      setPin('');setPin2('');setSel('');
+      setMsg(`✅ ${s.name}-н PIN: ${pin} болгон солигдлоо`);
+      setTimeout(()=>setMsg(''),4000);
+    }catch(e){
+      setErr('❌ Хадгалах алдаа: '+String(e));
+    }
   };
   return(
     <div style={{...CS,marginTop:'1rem'}}>
