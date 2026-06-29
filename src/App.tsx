@@ -1026,7 +1026,16 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
   const [cf,setCf]=useState('__all__');
   const aCats=[...new Set(menuItems.map(i=>i.category))];
   const ai=menuItems.filter(i=>i.available),ini=menuItems.filter(i=>!i.available);
-  const disp=cf==='__inactive__'?ini:cf==='__all__'?ai:ai.filter(i=>i.category===cf);
+  const [search,setSearch]=useState('');
+  const baseDisp=cf==='__inactive__'?ini:cf==='__all__'?ai:ai.filter(i=>i.category===cf);
+  const disp=search?baseDisp.filter(item=>{
+    const s=search.toLowerCase();
+    return item.name.toLowerCase().includes(s)||
+           (item as any).code?.toLowerCase().includes(s)||
+           (item as any).nameEn?.toLowerCase().includes(s)||
+           (item as any).nameZh?.toLowerCase().includes(s)||
+           (item as any).nameKo?.toLowerCase().includes(s);
+  }):baseDisp;
   const tog=async(item:MenuItem)=>{await updateMenuItem(branchId,item.id!,{available:!item.available});logAct(item.available?'Хоол хаагдлаа':'Хоол нээгдлэв',item.name);};
   return(
     <div style={{overflowX:'hidden',width:'100%'}}>
@@ -1038,6 +1047,7 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
             </button>
           ))}
         </div>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Нэр эсвэл код хайх..." style={{...IS,fontSize:'0.8rem',padding:'0.4rem 0.75rem',flex:'0 0 auto',width:'180px'}}/>
         <button onClick={onNew} style={{padding:'0.5rem 1.1rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.82rem',flexShrink:0}}>+ Шинэ хоол</button>
       </div>
       {disp.length===0&&<div style={{textAlign:'center',padding:'3rem',color:C.muted}}><div style={{fontSize:'3rem'}}>🍽️</div><p>{cf==='__inactive__'?'Идэвхгүй хоол байхгүй':'Хоол байхгүй'}</p></div>}
@@ -1046,11 +1056,15 @@ function MenuTab({branchId,onEdit,onDel,onNew,logAct}:{branchId:string;onEdit:(i
           <div key={item.id} style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,opacity:item.available?1:0.6,minWidth:0}}>
             {item.image&&<div style={{height:'160px',overflow:'hidden',width:'100%',flexShrink:0}}><img src={item.image} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none';}}/></div>}
             <div style={{padding:'0.875rem',boxSizing:'border-box'}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.15rem',alignItems:'flex-start',gap:'0.5rem'}}>
-                <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,minWidth:0,wordBreak:'break-word'}}>{item.name}</span>
-                <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.88rem',flexShrink:0,whiteSpace:'nowrap'}}>{formatPrice(item.price)}</span>
+              <div style={{display:'flex',alignItems:'baseline',gap:'0.4rem',flexWrap:'wrap' as const,marginBottom:'0.1rem'}}>
+                <span style={{fontWeight:'800',color:C.text,fontSize:'0.88rem',flex:1,minWidth:0,wordBreak:'break-word' as const}}>{item.name}</span>
+                <span style={{color:C.yellow,fontWeight:'700',fontSize:'0.88rem',flexShrink:0,whiteSpace:'nowrap' as const}}>{formatPrice(item.price)}</span>
               </div>
-              <span style={{fontSize:'0.7rem',color:C.muted}}>{item.category}</span>
+              <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap' as const,marginBottom:'0.2rem'}}>
+                <span style={{fontSize:'0.7rem',color:C.muted}}>{item.category}</span>
+                {(item as any).code&&<span style={{fontSize:'0.68rem',background:`${C.orange}22`,color:C.orange,padding:'0.05rem 0.4rem',borderRadius:'4px',fontWeight:'700'}}>#{(item as any).code}</span>}
+                {(item as any).servings>0&&<span style={{fontSize:'0.68rem',background:`${C.green}18`,color:C.green,padding:'0.05rem 0.4rem',borderRadius:'4px'}}>👥{(item as any).servings}хүн</span>}
+              </div>
               {!item.available&&<span style={{fontSize:'0.65rem',color:C.red,background:`${C.red}15`,borderRadius:'4px',padding:'0.1rem 0.4rem',marginLeft:'0.4rem'}}>Идэвхгүй</span>}
               <div style={{display:'flex',gap:'0.4rem',marginTop:'0.6rem',alignItems:'center'}}>
                 <button onClick={()=>onEdit(item)} style={{flex:1,padding:'0.38rem',border:`1px solid ${C.border}`,borderRadius:'6px',background:C.inpBg,color:C.text,cursor:'pointer',fontWeight:'600',fontSize:'0.72rem'}}>✏️ Засах</button>
@@ -1090,9 +1104,23 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
   const save=async()=>{
     if(!form.name||!form.category||!form.price||isNaN(Number(form.price)))return setErr('Нэр, ангилал, үнэ шаардлагатай');
     setUpl(true);
-    try{await saveMenuItem(branchId,{name:form.name.trim(),category:form.category.trim(),price:Number(form.price),description:form.description||'',allergens:form.allergens||'',image:form.image||'',available:form.available!==false,isSpecial:!!form.isSpecial,discountPercent:Number(form.discountPercent)||0} as any,form.id);
+    try{
+      const data:any={
+        name:form.name.trim(), category:form.category.trim(),
+        price:Number(form.price), description:form.description||'',
+        allergens:form.allergens||'', image:form.image||'',
+        available:form.available!==false, isSpecial:!!form.isSpecial,
+        discountPercent:Number(form.discountPercent)||0,
+        code:form.code?.trim()||'',
+        servings:Number(form.servings)||0,
+        nameEn:form.nameEn?.trim()||'',
+        nameZh:form.nameZh?.trim()||'',
+        nameKo:form.nameKo?.trim()||'',
+      };
+      await saveMenuItem(branchId,data,form.id);
       logAct(form.id?'Хоол засагдлаа':'Шинэ хоол нэмэгдлэв',`${form.name} — ₮${form.price}`);
-      onClose();}catch{setErr('Хадгалах алдаа');setUpl(false);}
+      onClose();
+    }catch{setErr('Хадгалах алдаа');setUpl(false);}
   };
   const visCats=cats.filter(c=>c.visible);
   return(
@@ -1116,7 +1144,14 @@ function MenuModal({branchId,init,cats,onClose,logAct}:{branchId:string;init:any
           <input ref={fRef} type="file" accept="image/*" onChange={hFile} style={{display:'none'}}/>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem',marginBottom:'0.6rem'}}>
-          <div style={{gridColumn:'1/-1'}}><label style={LS}>Хоолны нэр *</label><input value={form.name} onChange={e=>setForm((f:any)=>({...f,name:e.target.value}))} style={IS}/></div>
+          <div style={{gridColumn:'1/-1'}}><label style={LS}>Хоолны нэр (монгол) *</label><input value={form.name} onChange={e=>setForm((f:any)=>({...f,name:e.target.value}))} style={IS}/></div>
+          {/* Хоолны код + Порц */}
+          <div><label style={LS}>🔖 Хоолны код</label><input value={form.code||''} onChange={e=>setForm((f:any)=>({...f,code:e.target.value}))} placeholder="A01, B02..." style={IS}/></div>
+          <div><label style={LS}>👥 Порц (хүний тоо)</label><input type="number" min="1" value={form.servings||''} onChange={e=>setForm((f:any)=>({...f,servings:e.target.value}))} placeholder="1" style={IS}/></div>
+          {/* Олон хэлний нэр */}
+          <div><label style={LS}>🇺🇸 Англи нэр</label><input value={form.nameEn||''} onChange={e=>setForm((f:any)=>({...f,nameEn:e.target.value}))} placeholder="English name" style={IS}/></div>
+          <div><label style={LS}>🇰🇷 Солонгос нэр</label><input value={form.nameKo||''} onChange={e=>setForm((f:any)=>({...f,nameKo:e.target.value}))} placeholder="한국어 이름" style={IS}/></div>
+          <div><label style={LS}>🇨🇳 Хятад нэр</label><input value={form.nameZh||''} onChange={e=>setForm((f:any)=>({...f,nameZh:e.target.value}))} placeholder="中文名称" style={IS}/></div>
           <div>
             <label style={LS}>Ангилал *</label>
             {visCats.length>0?<CSelect value={form.category} onChange={v=>setForm((f:any)=>({...f,category:v}))} placeholder="Сонгоно уу" options={visCats.map(c=>({value:c.name,label:c.name}))}/>
