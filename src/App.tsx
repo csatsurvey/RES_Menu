@@ -14,7 +14,7 @@ import {
   getSettings, saveSettings, saveSurveyQuestions, subscribeToSettings,
   logActivity, subscribeToLogs, ActivityLog,
   getBranchLicenseStatus, LicenseCheck, getLicense, License, subscribeToLicense,
-  getSalesReport, Location, subscribeToLocations, saveLocation, deleteLocation,
+  getSalesReport, getOrdersInRange, Location, subscribeToLocations, saveLocation, deleteLocation,
   addManagerPin, removeManagerPin, getManagerPins,
   formatPrice, formatTime, formatDate,
   ORDER_STATUS_LABELS, ORDER_STATUS_COLORS,
@@ -756,12 +756,13 @@ function OrderCard({o,branchId,branchLabel}:{o:Order;branchId:string;branchLabel
   const totalQty=o.items.reduce((s,i)=>s+i.quantity,0);
   const totalAmt=o.items.reduce((s,i)=>s+i.price*i.quantity,0);
   return(
-    <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
+    <div style={{background:C.card,borderRadius:'14px',overflow:'hidden',border:`1px solid ${o.status==='billed'?C.green:C.border}`,borderTop:`4px solid ${ORDER_STATUS_COLORS[o.status]}`,marginBottom:'0.75rem'}}>
       <div style={{padding:'0.875rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:`1px solid ${C.border}`}}>
         <div>
           <div style={{display:'flex',alignItems:'baseline',gap:'0.5rem'}}>
             <span style={{fontSize:'2rem',fontWeight:'900',color:C.text,lineHeight:1}}>Ширээ {o.tableNumber}</span>
             {(o as any).orderNumber&&<span style={{fontSize:'0.9rem',fontWeight:'800',color:C.yellow,background:`${C.yellow}18`,padding:'0.1rem 0.5rem',borderRadius:'8px'}}>{(o as any).orderNumber}</span>}
+            {o.status==='billed'&&<span style={{fontSize:'0.72rem',fontWeight:'700',color:C.green,background:`${C.green}18`,padding:'0.15rem 0.5rem',borderRadius:'8px'}}>✅ Бүртгэгдсэн</span>}
           </div>
           {branchLabel&&<div style={{fontSize:'0.65rem',color:C.orange,fontWeight:'700',marginTop:'0.1rem'}}>📍 {branchLabel}</div>}
           <div style={{display:'flex',gap:'0.75rem',marginTop:'0.3rem'}}>
@@ -865,16 +866,24 @@ function SalesTab({branchId}:{branchId:string}) {
   const [fd,setFd]=useState('');
   const [td,setTd]=useState('');
   const [data,setData]=useState<SalesData|null>(null);
+  const [detOrders,setDetOrders]=useState<Order[]>([]);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState('');
+  const [view,setView]=useState<'summary'|'detail'>('summary');
+
+  const getRangeMs=()=>{
+    let fMs=Date.now()-86400000,tMs=Date.now();
+    if(filter==='custom'&&fd&&td){fMs=new Date(fd).getTime();tMs=new Date(td).getTime()+86399999;}
+    else{const f=SF.find(f2=>f2.k===filter);if(f)fMs=Date.now()-f.ms;}
+    return{fMs,tMs};
+  };
 
   const load=async()=>{
     setLoading(true);setErr('');
     try{
-      let fMs=Date.now()-86400000,tMs=Date.now();
-      if(filter==='custom'&&fd&&td){fMs=new Date(fd).getTime();tMs=new Date(td).getTime()+86399999;}
-      else{const f=SF.find(f2=>f2.k===filter);if(f)fMs=Date.now()-f.ms;}
-      setData(await getSalesReport(branchId,fMs,tMs));
+      const{fMs,tMs}=getRangeMs();
+      const[rep,ords]=await Promise.all([getSalesReport(branchId,fMs,tMs),getOrdersInRange(branchId,fMs,tMs)]);
+      setData(rep);setDetOrders(ords);
     }catch(e){setErr(String(e));}
     setLoading(false);
   };
@@ -934,34 +943,78 @@ function SalesTab({branchId}:{branchId:string}) {
             </div>
           ))}
         </div>
-        {data.products.length>0&&<div style={{...CS,marginBottom:'1rem'}}><p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>📊 Top бүтээгдэхүүн</p><SimpleBarChart data={data.products.slice(0,10)}/></div>}
-        <div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,overflow:'hidden'}}>
-          <div style={{padding:'0.875rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between'}}>
-            <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:0}}>🍽️ Дэлгэрэнгүй</p>
-            <span style={{color:C.muted,fontSize:'0.72rem'}}>{data.products.length} бүтээгдэхүүн</span>
-          </div>
-          {data.products.length===0?<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Борлуулалт байхгүй</p>
-          :<table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:'0.82rem'}}>
-            <thead><tr style={{background:'rgba(255,255,255,0.04)'}}>
-              {['#','Бүтээгдэхүүн','Тоо ш','Орлого'].map(h=><th key={h} style={{padding:'0.6rem 1rem',textAlign:'left' as const,color:C.muted,fontWeight:'600',fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,borderBottom:`1px solid ${C.border}`}}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {data.products.map((p,i)=>(
-                <tr key={p.name} style={{borderBottom:`1px solid ${C.border}`}}>
-                  <td style={{padding:'0.6rem 1rem',color:C.muted,width:'36px'}}>{i+1}</td>
-                  <td style={{padding:'0.6rem 1rem',color:'rgba(255,255,255,0.88)',fontWeight:'700'}}>{p.name}</td>
-                  <td style={{padding:'0.6rem 1rem',color:C.yellow,fontWeight:'800',textAlign:'center' as const}}>{p.qty} ш</td>
-                  <td style={{padding:'0.6rem 1rem',color:C.green,fontWeight:'800',textAlign:'right' as const}}>{formatPrice(p.revenue)}</td>
-                </tr>
-              ))}
-              <tr style={{background:'rgba(255,255,255,0.04)'}}>
-                <td colSpan={2} style={{padding:'0.6rem 1rem',color:C.muted,fontWeight:'700'}}>Нийт</td>
-                <td style={{padding:'0.6rem 1rem',color:C.yellow,fontWeight:'800',textAlign:'center' as const}}>{data.products.reduce((s,p)=>s+p.qty,0)} ш</td>
-                <td style={{padding:'0.6rem 1rem',color:C.green,fontWeight:'800',textAlign:'right' as const}}>{formatPrice(data.totalRevenue)}</td>
-              </tr>
-            </tbody>
-          </table>}
+        {/* Хураангуй / Дэлгэрэнгүй toggle */}
+        <div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem'}}>
+          {[{k:'summary',l:'📊 Хураангуй'},{k:'detail',l:'📋 Дэлгэрэнгүй'}].map(v=>(
+            <button key={v.k} onClick={()=>setView(v.k as any)} style={{padding:'0.38rem 0.875rem',borderRadius:'20px',border:`1px solid ${view===v.k?C.orange:C.border}`,background:view===v.k?`${C.orange}22`:'transparent',color:view===v.k?C.orange:C.muted,fontWeight:view===v.k?'700':'500',cursor:'pointer',fontSize:'0.78rem'}}>{v.l}</button>
+          ))}
         </div>
+        {view==='summary'&&<>
+          {data.products.length>0&&<div style={{...CS,marginBottom:'1rem'}}><p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>📊 Top бүтээгдэхүүн</p><SimpleBarChart data={data.products.slice(0,10)}/></div>}
+          <div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,overflow:'hidden'}}>
+            <div style={{padding:'0.875rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between'}}>
+              <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:0}}>🍽️ Бүтээгдэхүүнээр</p>
+              <span style={{color:C.muted,fontSize:'0.72rem'}}>{data.products.length} бүтээгдэхүүн</span>
+            </div>
+            {data.products.length===0?<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Борлуулалт байхгүй</p>
+            :<table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:'0.82rem'}}>
+              <thead><tr style={{background:'rgba(255,255,255,0.04)'}}>
+                {['#','Бүтээгдэхүүн','Тоо ш','Орлого'].map(h=><th key={h} style={{padding:'0.6rem 1rem',textAlign:'left' as const,color:C.muted,fontWeight:'600',fontSize:'0.7rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,borderBottom:`1px solid ${C.border}`}}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {data.products.map((p,i)=>(
+                  <tr key={p.name} style={{borderBottom:`1px solid ${C.border}`}}>
+                    <td style={{padding:'0.6rem 1rem',color:C.muted,width:'36px'}}>{i+1}</td>
+                    <td style={{padding:'0.6rem 1rem',color:'rgba(255,255,255,0.88)',fontWeight:'700'}}>{p.name}</td>
+                    <td style={{padding:'0.6rem 1rem',color:C.yellow,fontWeight:'800',textAlign:'center' as const}}>{p.qty} ш</td>
+                    <td style={{padding:'0.6rem 1rem',color:C.green,fontWeight:'800',textAlign:'right' as const}}>{formatPrice(p.revenue)}</td>
+                  </tr>
+                ))}
+                <tr style={{background:'rgba(255,255,255,0.04)'}}>
+                  <td colSpan={2} style={{padding:'0.6rem 1rem',color:C.muted,fontWeight:'700'}}>Нийт</td>
+                  <td style={{padding:'0.6rem 1rem',color:C.yellow,fontWeight:'800',textAlign:'center' as const}}>{data.products.reduce((s,p)=>s+p.qty,0)} ш</td>
+                  <td style={{padding:'0.6rem 1rem',color:C.green,fontWeight:'800',textAlign:'right' as const}}>{formatPrice(data.totalRevenue)}</td>
+                </tr>
+              </tbody>
+            </table>}
+          </div>
+        </>}
+        {view==='detail'&&<div style={{background:C.card,borderRadius:'14px',border:`1px solid ${C.border}`,overflow:'hidden'}}>
+          <div style={{padding:'0.875rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between'}}>
+            <p style={{color:C.orange,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:0}}>📋 Захиалгаар дэлгэрэнгүй</p>
+            <span style={{color:C.muted,fontSize:'0.72rem'}}>{detOrders.length} захиалга</span>
+          </div>
+          {detOrders.length===0?<p style={{textAlign:'center' as const,color:C.muted,padding:'2rem'}}>Захиалга байхгүй</p>
+          :<div style={{overflowX:'auto' as const}}>
+            <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:'0.82rem',minWidth:'600px'}}>
+              <thead><tr style={{background:'rgba(255,255,255,0.04)'}}>
+                {['Захиалга#','Ширээ','Огноо','Цаг','Хоолнууд','Нийт'].map(h=><th key={h} style={{padding:'0.5rem 0.875rem',textAlign:'left' as const,color:C.muted,fontWeight:'600',fontSize:'0.7rem',textTransform:'uppercase' as const,borderBottom:`1px solid ${C.border}`,whiteSpace:'nowrap' as const}}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {detOrders.map(o=>{
+                  const tot=o.items.reduce((s,i)=>s+i.price*i.quantity,0);
+                  const dt=new Date(o.createdAt);
+                  return(
+                    <tr key={o.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:'0.5rem 0.875rem',color:C.yellow,fontWeight:'700'}}>{(o as any).orderNumber||'—'}</td>
+                      <td style={{padding:'0.5rem 0.875rem',color:C.text,fontWeight:'700'}}>Ширээ {o.tableNumber}</td>
+                      <td style={{padding:'0.5rem 0.875rem',color:C.muted,whiteSpace:'nowrap' as const}}>{formatDate(o.createdAt)}</td>
+                      <td style={{padding:'0.5rem 0.875rem',color:C.muted,whiteSpace:'nowrap' as const}}>{formatTime(o.createdAt)}</td>
+                      <td style={{padding:'0.5rem 0.875rem'}}>
+                        {o.items.map((it,i)=>(
+                          <div key={i} style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.75)',lineHeight:1.6}}>
+                            {it.name} <span style={{color:C.muted}}>×{it.quantity}</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td style={{padding:'0.5rem 0.875rem',color:C.green,fontWeight:'800',textAlign:'right' as const,whiteSpace:'nowrap' as const}}>{formatPrice(tot)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>}
+        </div>}
       </>}
     </div>
   );
@@ -1397,11 +1450,49 @@ function SettingsTab({branchId,tables,managerName,onManagerNameChange,onLogAct}:
       <LocationsManager branchId={branchId}/>
 
       {/* Менежерийн PIN солих */}
+      <StaffPinChanger branchId={branchId}/>
       <PinChanger branchId={branchId}/>
     </div>
   );
 }
 
+
+function StaffPinChanger({branchId}:{branchId:string}) {
+  const [staff,setStaff]=useState<Staff[]>([]);
+  const [sel,setSel]=useState('');
+  const [pin,setPin]=useState('');
+  const [pin2,setPin2]=useState('');
+  const [msg,setMsg]=useState('');
+  const [err,setErr]=useState('');
+  useEffect(()=>{const u=subscribeToStaff(branchId,s=>setStaff(s.filter(x=>x.active!==false&&!(x as any).deletedAt)));return u;},[branchId]);
+  const RL:Record<string,string>={chef:'👨‍🍳 Тогооч',waiter:'🛎️ Зөөгч',admin:'🔑 Ахлах'};
+  const save=async()=>{
+    setMsg('');setErr('');
+    if(!sel)return setErr('Ажилтан сонгоно уу');
+    if(pin.length<4)return setErr('PIN 4-с дээш тоо');
+    if(pin!==pin2)return setErr('PIN давтлага таарахгүй');
+    const s=staff.find(x=>x.id===sel);if(!s)return;
+    await updateStaff(branchId,s.id,{pin});
+    setPin('');setPin2('');setSel('');
+    setMsg(`✅ ${s.name}-н PIN шинэчлэгдлээ`);setTimeout(()=>setMsg(''),3000);
+  };
+  return(
+    <div style={{...CS,marginTop:'1rem'}}>
+      <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.05em',textTransform:'uppercase' as const,margin:'0 0 0.75rem'}}>👤 АЖИЛТНЫ PIN СОЛИХ</p>
+      <div style={{display:'flex',flexDirection:'column' as const,gap:'0.5rem'}}>
+        <select value={sel} onChange={e=>setSel(e.target.value)} style={{...IS,cursor:'pointer'}}>
+          <option value="">— Ажилтан сонгоно уу —</option>
+          {staff.map(s=><option key={s.id} value={s.id}>{s.name} ({RL[s.role]||s.role})</option>)}
+        </select>
+        <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="Шинэ PIN (4+ тоо)" style={IS} maxLength={8}/>
+        <input value={pin2} onChange={e=>setPin2(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN давтах" style={IS} maxLength={8}/>
+        {err&&<p style={{color:C.red,fontSize:'0.78rem',margin:0}}>{err}</p>}
+        {msg&&<p style={{color:C.green,fontSize:'0.78rem',margin:0}}>{msg}</p>}
+        <button onClick={save} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer',fontSize:'0.85rem'}}>PIN солих</button>
+      </div>
+    </div>
+  );
+}
 
 function PinChanger({branchId}:{branchId:string}) {
   const [pins,setPins]=useState<string[]>([]);
