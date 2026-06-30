@@ -291,18 +291,10 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     if(!staffBranchId)return setError('Салбар сонгоно уу');
     if(!staffPin.trim())return setError('PIN оруулна уу');
     setLoading(true);resetErr();
-    // Сонгосон салбараас хайна, олдохгүй бол бүх холбоотой салбараас хайна
-    let s=await verifyStaffPin(staffBranchId,staffPin);
-    if(!s){
-      for(const branch of staffBranches){
-        if(branch.id!==staffBranchId){
-          s=await verifyStaffPin(branch.id,staffPin);
-          if(s)break;
-        }
-      }
-    }
+    // Зөвхөн СОНГОСОН салбараас хайна — өөр салбарт давхар нэвтрэхгүй
+    const s=await verifyStaffPin(staffBranchId,staffPin);
     setLoading(false);
-    if(!s)return setError('PIN буруу');
+    if(!s)return setError('PIN буруу эсвэл энэ салбарт бүртгэлгүй');
     if((s as any).active===false)return setError('Таны эрх идэвхгүй байна');
     onStaff(staffBranchId,s);
   };
