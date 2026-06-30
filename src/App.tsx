@@ -232,14 +232,19 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     if(!mgrBranchId)return setError('Салбар сонгоно уу');
     if(!mgrPin)return setError('PIN оруулна уу');
     setLoading(true);resetErr();
-    // Сонгосон салбараас хайна, олдохгүй бол бүх холбоотой салбараас хайна
-    let ok=await verifyManagerPin(mgrBranchId,mgrPin);
+    const allBids=[mgrBranchId,...mgrBranches.map(b=>b.id).filter(id=>id!==mgrBranchId)];
+    // 1. Менежерийн PIN шалгах (бүх холбоотой салбараас)
+    let ok=false;
+    for(const bid of allBids){
+      ok=await verifyManagerPin(bid,mgrPin);
+      if(ok)break;
+    }
+    // 2. Менежерийн PIN олдохгүй бол admin-роль ажилтны PIN шалгах
+    // (ажилтан нэмлээ + admin роль → шууд менежер tab-аас нэвтрэх боломжтой)
     if(!ok){
-      for(const branch of mgrBranches){
-        if(branch.id!==mgrBranchId){
-          ok=await verifyManagerPin(branch.id,mgrPin);
-          if(ok)break;
-        }
+      for(const bid of allBids){
+        const s=await verifyStaffPin(bid,mgrPin);
+        if(s&&(s as any).role==='admin'){ok=true;break;}
       }
     }
     setLoading(false);
