@@ -2239,8 +2239,6 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
               ℹ️ Ажилтан нэмэх бол дээрх шүүлтрээс тухайн салбарыг сонгоно уу.
             </div>}
             <StaffListWithRoles staff={effectiveStaff} branchId={branchId} isMulti={isMulti} gbf={gbf} onEdit={setEditStaff} onToggle={async(s)=>{const active=(s as any).active!==false;await updateStaff((s as any)._bid||branchId,s.id,{active:!active});await logAct(`Ажилтан ${active?'хаагдлаа':'нээгдлэв'}`,s.name);}} onDelete={async(s)=>{if(!window.confirm(`${s.name}-г устгах уу?`))return;await removeStaff((s as any)._bid||branchId,s.id);await logAct('Ажилтан устгасан',s.name);}}/>
-            {/* Ажилтны PIN солих — Staff tab дотор */}
-            <StaffPinChanger branchId={branchId}/>
           </>}
 
           {tab==='settings'&&<SettingsTab branchId={branchId} tables={tables} managerName={managerName} onManagerNameChange={setManagerName} onLogAct={(a,d)=>logAct(a,d)} allBranchIds={siblingBranches?.map(b=>b.id)||[]}/>}
