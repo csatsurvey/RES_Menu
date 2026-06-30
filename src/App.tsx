@@ -104,6 +104,7 @@ function AppInner() {
   const [branchId,setBranchId]=useState('');
   const [tableNum,setTableNum]=useState(0);
   const [isManager,setIsManager]=useState(false);
+  const [isHeadManager,setIsHeadManager]=useState(false);
   const [staff,setStaff]=useState<Staff|null>(null);
   const [license,setLicense]=useState<LicenseCheck|null>(null);
   const [isOnline,setIsOnline]=useState(navigator.onLine);
@@ -119,9 +120,9 @@ function AppInner() {
     window.addEventListener('offline',goOff);
     return()=>{window.removeEventListener('online',goOn);window.removeEventListener('offline',goOff);};
   },[]);
-  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setStaff(null);setLicense(null);};
-  const goAdmin=(id:string,isMan:boolean,s:Staff|null)=>{
-    if(isMan){setIsManager(true);}else{setStaff(s);}
+  const logout=()=>{setView('landing');setBranchId('');setIsManager(false);setIsHeadManager(false);setStaff(null);setLicense(null);};
+  const goAdmin=(id:string,isMan:boolean,isHead:boolean,s:Staff|null)=>{
+    if(isMan){setIsManager(true);setIsHeadManager(isHead);}else{setStaff(s);setIsHeadManager(false);}
     setBranchId(id);setView('admin');
     getBranchLicenseStatus(id).then(setLicense);
   };
@@ -129,13 +130,13 @@ function AppInner() {
     {!isOnline&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#E74C3C',color:'white',textAlign:'center',padding:'0.4rem 1rem',fontSize:'0.78rem',fontWeight:'700',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.5rem'}}>
       <span>📵</span><span>Интернэтгүй — офлайн горим</span>
     </div>}
-    {view==='landing'&&<LandingView onManager={id=>goAdmin(id,true,null)} onStaff={(id,s)=>goAdmin(id,false,s)}/>}
+    {view==='landing'&&<LandingView onManager={(id,isHead)=>goAdmin(id,true,isHead,null)} onStaff={(id,s)=>goAdmin(id,false,false,s)}/>}
     {view==='customer'&&<CustomerView branchId={branchId} tableNum={tableNum}/>}
-    {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} staff={staff} license={license} onLogout={logout}/>}
+    {view==='admin'&&<AdminPanel branchId={branchId} isManager={isManager} isHeadManager={isHeadManager} staff={staff} license={license} onLogout={logout}/>}
   </>);
 }
 
-function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(id:string,s:Staff)=>void}) {
+function LandingView({onManager,onStaff}:{onManager:(id:string,isHead:boolean)=>void;onStaff:(id:string,s:Staff)=>void}) {
   type LMode='select'|'mgr-lic'|'mgr-branches'|'staff-lic'|'staff-branches'|'staff-pin';
   const MGR_LIC_LS='res_mgr_license_key';
   const STF_LIC_LS='res_staff_license_key';
@@ -233,23 +234,29 @@ function LandingView({onManager,onStaff}:{onManager:(id:string)=>void;onStaff:(i
     if(!mgrPin)return setError('PIN оруулна уу');
     setLoading(true);resetErr();
     const allBids=[mgrBranchId,...mgrBranches.map(b=>b.id).filter(id=>id!==mgrBranchId)];
-    // 1. Менежерийн PIN шалгах (бүх холбоотой салбараас)
-    let ok=false;
+
+    // 1. Master PIN эсвэл head_manager роль → АХЛАХ МЕНЕЖЕР (бүх салбар)
+    let isHead=false;
     for(const bid of allBids){
-      ok=await verifyManagerPin(bid,mgrPin);
-      if(ok)break;
+      if(await verifyManagerPin(bid,mgrPin)){isHead=true;break;}
     }
-    // 2. Менежерийн PIN олдохгүй бол admin-роль ажилтны PIN шалгах
-    // (ажилтан нэмлээ + admin роль → шууд менежер tab-аас нэвтрэх боломжтой)
-    if(!ok){
+    if(!isHead){
       for(const bid of allBids){
         const s=await verifyStaffPin(bid,mgrPin);
-        if(s&&(s as any).role==='admin'){ok=true;break;}
+        if(s&&(s as any).role==='head_manager'){isHead=true;break;}
       }
     }
+
+    // 2. admin роль + ЗӨВХӨН сонгосон салбарт → САЛБАРЫН МЕНЕЖЕР
+    let isBranch=false;
+    if(!isHead){
+      const s=await verifyStaffPin(mgrBranchId,mgrPin);
+      if(s&&(s as any).role==='admin')isBranch=true;
+    }
+
     setLoading(false);
-    if(!ok)return setError('PIN буруу');
-    onManager(mgrBranchId);
+    if(!isHead&&!isBranch)return setError('PIN буруу');
+    onManager(mgrBranchId,isHead);
   };
 
   // ── Staff login ──
@@ -1345,7 +1352,7 @@ function StaffListWithRoles({staff,branchId,isMulti,gbf,onEdit,onToggle,onDelete
   const [pinVal,setPinVal]=useState('');
   const [pinMsg,setPinMsg]=useState('');
   const [pinBusy,setPinBusy]=useState(false);
-  const ROLES=[{k:'all',l:'👥 Бүгд',c:C.yellow},{k:'chef',l:'👨‍🍳 Тогооч',c:C.orange},{k:'waiter',l:'🛎️ Зөөгч',c:'#3B82F6'},{k:'admin',l:'🔑 Менежер',c:'#8B5CF6'}];
+  const ROLES=[{k:'all',l:'👥 Бүгд',c:C.yellow},{k:'chef',l:'👨‍🍳 Тогооч',c:C.orange},{k:'waiter',l:'🛎️ Зөөгч',c:'#3B82F6'},{k:'admin',l:'🔑 Салбарын Мен.',c:'#8B5CF6'},{k:'head_manager',l:'👑 Ахлах Мен.',c:C.yellow}];
   const roleStaff=roleF==='all'?staff:staff.filter(s=>s.role===roleF);
   const DBURL='https://restaurant-system-6fb57-default-rtdb.asia-southeast1.firebasedatabase.app';
 
@@ -1388,7 +1395,7 @@ function StaffListWithRoles({staff,branchId,isMulti,gbf,onEdit,onToggle,onDelete
     {roleStaff.map(s=>{
       const active=(s as any).active!==false;
       const ri=s.role==='admin'?'🔑':s.role==='chef'?'👨‍🍳':'🛎️';
-      const rl=s.role==='admin'?'Ажлын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
+      const rl=s.role==='head_manager'?'👑 Ахлах Менежер':s.role==='admin'?'🔑 Салбарын Менежер':s.role==='chef'?'Тогооч':'Зөөгч';
       const sBid=(s as any)._bid||branchId;
       const sBn=(s as any)._bn||'';
       const isEditing=pinEdit===s.id;
@@ -1449,7 +1456,7 @@ function StaffEditModal({branchId,s,onClose,onSaved,logAct}:{branchId:string;s:S
         </div>
         <div style={{display:'flex',flexDirection:'column' as const,gap:'0.75rem'}}>
           <div><label style={LS}>Нэр *</label><input value={nm} onChange={e=>setNm(e.target.value)} style={IS}/></div>
-          <div><label style={LS}>Роль</label><CSelect value={rl} onChange={v=>setRl(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Ажлын Менежер'}]}/></div>
+          <div><label style={LS}>Роль</label><CSelect value={rl} onChange={v=>setRl(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Салбарын Менежер'},{value:'head_manager',label:'👑 Ахлах Менежер'}]}/></div>
           <div><label style={LS}>Шинэ PIN (хоосон = өөрчлөхгүй)</label><input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,8))} type="password" placeholder="••••" style={IS} inputMode="numeric"/></div>
           {err&&<p style={{color:C.red,fontSize:'0.82rem',margin:0,textAlign:'center' as const}}>{err}</p>}
           <div style={{display:'flex',gap:'0.6rem'}}>
@@ -1818,7 +1825,7 @@ function SurveyCard({s,sa,branchId,onLog}:{s:Survey;sa:boolean;branchId:string;o
     </div>
   );
 }
-function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string;isManager:boolean;staff:Staff|null;license:LicenseCheck|null;onLogout:()=>void}) {
+function AdminPanel({branchId,isManager,isHeadManager=true,staff,license,onLogout}:{branchId:string;isManager:boolean;isHeadManager?:boolean;staff:Staff|null;license:LicenseCheck|null;onLogout:()=>void}) {
   const [tab,setTab]=useState<AdminTab>(isManager?'dashboard':'orders');
   const [surveys,setSurveys]=useState<Survey[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -1910,8 +1917,8 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
     return()=>unsubs.flat().forEach(u=>u());
   },[siblingBranches,isMainBranch]);
 
-  // ── Effective data — isMulti зөвхөн үндсэн салбарын менежерт ──
-  const isMulti=isManager&&isMainBranch&&siblingBranches.length>0;
+  // ── Effective data — isMulti зөвхөн АХЛАХ менежерт ──
+  const isMulti=isManager&&isHeadManager&&isMainBranch&&siblingBranches.length>0;
   const allBranchOpts=useMemo(()=>[
     {id:branchId,name:bName||'Үндсэн салбар'},
     ...siblingBranches.map(b=>({id:b.id,name:b.name}))
@@ -2051,7 +2058,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
         <div style={{padding:'1.25rem 1rem',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <div>
             <p style={{color:C.yellow,fontWeight:'800',fontSize:'0.85rem',letterSpacing:'0.06em',margin:0}}>{bName.toUpperCase()||'РЕСТОРАН'}</p>
-            <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='admin'?'🔑 Ажлын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
+            <p style={{color:C.muted,fontSize:'0.7rem',margin:'0.2rem 0 0'}}>{isManager?'👔 Менежер':staff?.role==='head_manager'?'👑 Ахлах Менежер':staff?.role==='admin'?'🔑 Салбарын Менежер':staff?.role==='chef'?'👨‍🍳 Тогооч':'🛎️ Зөөгч'}</p>
           </div>
           {mob&&<button onClick={()=>setShowSidebar(false)} style={{background:'none',border:'none',color:C.muted,fontSize:'1.3rem',cursor:'pointer',padding:'0.2rem'}}>✕</button>}
         </div>
@@ -2227,7 +2234,7 @@ function AdminPanel({branchId,isManager,staff,license,onLogout}:{branchId:string
               <p style={{color:C.yellow,fontWeight:'700',fontSize:'0.78rem',letterSpacing:'0.04em',textTransform:'uppercase' as const,margin:'0 0 0.875rem'}}>➕ Шинэ ажилтан нэмэх {isMulti&&gbf!=='all'&&<span style={{color:C.orange,fontWeight:'600',fontSize:'0.72rem'}}>({gbfLabel})</span>}</p>
               <div style={{display:'flex',flexDirection:'column' as const,gap:'0.6rem'}}>
                 <input value={nName} onChange={e=>setNName(e.target.value)} placeholder="Нэр" style={IS}/>
-                <CSelect value={nRole} onChange={v=>setNRole(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Ажлын Менежер'}]}/>
+                <CSelect value={nRole} onChange={v=>setNRole(v as any)} placeholder="Роль" options={[{value:'chef',label:'👨‍🍳 Тогооч'},{value:'waiter',label:'🛎️ Зөөгч'},{value:'admin',label:'🔑 Салбарын Менежер'},{value:'head_manager',label:'👑 Ахлах Менежер'}]}/>
                 <input value={nPin} onChange={e=>setNPin(e.target.value.replace(/\D/g,''))} type="password" placeholder="PIN (4+)" style={IS} inputMode="numeric"/>
                 <button onClick={async()=>{if(!nName||!nPin||nPin.length<4)return;await addStaff(activeBranchId,nName,nRole,nPin);await logAct('Ажилтан нэмлээ',`${nName} (${nRole})`);setNName('');setNPin('');}} style={{padding:'0.7rem',background:C.orange,color:'white',border:'none',borderRadius:'8px',fontWeight:'700',cursor:'pointer'}}>➕ Нэмэх</button>
               </div>
