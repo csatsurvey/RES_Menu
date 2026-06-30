@@ -23,7 +23,7 @@ export interface Table {
 export interface Staff {
   id: string;
   name: string;
-  role: 'chef' | 'waiter' | 'admin';
+  role: 'chef' | 'waiter' | 'admin' | 'head_manager';
   pin: string;
   active?: boolean;
 }
@@ -254,7 +254,7 @@ export const subscribeToTables = (
 export const addStaff = async (
   branchId: string,
   name: string,
-  role: 'chef' | 'waiter' | 'admin',
+  role: 'chef' | 'waiter' | 'admin' | 'head_manager',
   pin: string
 ): Promise<string> => {
   const staffRef = push(ref(db, `branches/${branchId}/staff`));
@@ -647,7 +647,7 @@ export const subscribeToSettings = (
 export const updateStaff = async (
   branchId: string,
   staffId: string,
-  data: Partial<{ name: string; role: 'chef' | 'waiter' | 'admin'; pin: string; active: boolean }>
+  data: Partial<{ name: string; role: 'chef' | 'waiter' | 'admin' | 'head_manager'; pin: string; active: boolean }>
 ): Promise<void> => {
   // update() биш нэг нэгээр set() хийнэ — найдвартай
   for (const [key, val] of Object.entries(data)) {
